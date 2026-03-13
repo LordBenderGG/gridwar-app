@@ -30,13 +30,17 @@ export default function PerfilScreen() {
   useEffect(() => {
     if (!user) return;
     const fetchHistory = async () => {
-      const q = query(
-        collection(db, 'users', user.uid, 'history'),
-        orderBy('date', 'desc'),
-        limit(20)
-      );
-      const snap = await getDocs(q);
-      setHistory(snap.docs.map((d) => d.data() as HistoryItem));
+      try {
+        const q = query(
+          collection(db, 'users', user.uid, 'history'),
+          orderBy('date', 'desc'),
+          limit(20)
+        );
+        const snap = await getDocs(q);
+        setHistory(snap.docs.map((d) => d.data() as HistoryItem));
+      } catch {
+        // Sin historial todavía o fallo de red — no bloquea la pantalla
+      }
     };
     fetchHistory();
   }, [user]);
@@ -57,16 +61,27 @@ export default function PerfilScreen() {
   const handleChangePhoto = async () => {
     if (!user) return;
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') return;
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.7,
-    });
-    if (!result.canceled) {
-      const url = await uploadProfilePhoto(user.uid, result.assets[0].uri);
-      updateUser({ photoURL: url });
+    if (status !== 'granted') {
+      Alert.alert(
+        'Permiso denegado',
+        'Para cambiar tu foto necesitamos acceso a la galería. Ve a Ajustes > Permisos y activa el acceso a fotos.',
+        [{ text: 'Entendido' }]
+      );
+      return;
+    }
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+      });
+      if (!result.canceled) {
+        const url = await uploadProfilePhoto(user.uid, result.assets[0].uri);
+        updateUser({ photoURL: url });
+      }
+    } catch {
+      Alert.alert('Error', 'No se pudo cambiar la foto. Intenta de nuevo.');
     }
   };
 

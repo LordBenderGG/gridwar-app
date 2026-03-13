@@ -1,18 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
   Switch, RefreshControl, TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { collection, query, onSnapshot, where } from 'firebase/firestore';
+import { collection, query, onSnapshot, where, limit } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { UserProfile, updateUserProfile } from '../../services/auth';
-import { sendChallenge } from '../../services/challenge';
+import { sendChallenge, subscribeToIncomingChallenges, acceptChallenge, rejectChallenge, Challenge } from '../../services/challenge';
 import { useAuthStore } from '../../store/authStore';
 import { useModeStore } from '../../store/modeStore';
 import PlayerCard from '../../components/PlayerCard';
 import ChallengeModal from '../../components/ChallengeModal';
-import { subscribeToIncomingChallenges, acceptChallenge, Challenge } from '../../services/challenge';
 import { COLORS } from '../../constants/theme';
 
 export default function HomeScreen() {
@@ -27,7 +26,8 @@ export default function HomeScreen() {
 
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, 'users'));
+    // Limitar a 50 jugadores para no descargar toda la colección
+    const q = query(collection(db, 'users'), limit(50));
     const unsub = onSnapshot(q, (snap) => {
       const list = snap.docs
         .map((d) => d.data() as UserProfile)
@@ -63,6 +63,8 @@ export default function HomeScreen() {
         user.points,
         target.uid
       );
+      // Reset después de enviar con éxito (el listener de retos reacciona desde el otro lado)
+      setChallenging(null);
     } catch (e) {
       setChallenging(null);
     }
@@ -82,10 +84,15 @@ export default function HomeScreen() {
 
   const handleRejectChallenge = async () => {
     if (!incomingChallenge || !user) return;
-    const { rejectChallenge } = await import('../../services/challenge');
     await rejectChallenge(incomingChallenge.challengeId, incomingChallenge.from, user.uid);
     setIncomingChallenge(null);
   };
+
+  const onRefresh = useCallback(() => {
+    // Los datos ya se actualizan via onSnapshot; solo reseteamos el estado visual
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 800);
+  }, []);
 
   const toggleMode = async (val: boolean) => {
     const newMode = val ? 'local' : 'global';
@@ -148,7 +155,7 @@ export default function HomeScreen() {
           />
         )}
         refreshControl={
-          <RefreshControl refreshing={refreshing} tintColor={COLORS.primary} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
         }
         ListEmptyComponent={
           <Text style={styles.empty}>No hay jugadores disponibles</Text>

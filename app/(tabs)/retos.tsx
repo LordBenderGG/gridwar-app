@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, FlatList, StyleSheet, Image, TouchableOpacity,
+  View, Text, FlatList, StyleSheet, Image, TouchableOpacity, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useAuthStore } from '../../store/authStore';
 import { Challenge, acceptChallenge, rejectChallenge } from '../../services/challenge';
@@ -15,6 +15,7 @@ export default function RetosScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
   const [challenges, setChallenges] = useState<Challenge[]>([]);
+  const [, setTick] = useState(0); // Para forzar re-render del contador cada segundo
 
   useEffect(() => {
     if (!user) return;
@@ -29,15 +30,29 @@ export default function RetosScreen() {
     return () => unsub();
   }, [user]);
 
+  // Actualizar el contador de tiempo cada segundo
+  useEffect(() => {
+    const interval = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   const handleAccept = async (challenge: Challenge) => {
     if (!user) return;
-    const gameId = await acceptChallenge(challenge.challengeId, challenge, user.username, user.avatar);
-    router.push(`/game/${gameId}`);
+    try {
+      const gameId = await acceptChallenge(challenge.challengeId, challenge, user.username, user.avatar);
+      router.push(`/game/${gameId}`);
+    } catch {
+      Alert.alert('Error', 'No se pudo aceptar el reto. Intenta de nuevo.');
+    }
   };
 
   const handleReject = async (challenge: Challenge) => {
     if (!user) return;
-    await rejectChallenge(challenge.challengeId, challenge.from, user.uid);
+    try {
+      await rejectChallenge(challenge.challengeId, challenge.from, user.uid);
+    } catch {
+      Alert.alert('Error', 'No se pudo rechazar el reto.');
+    }
   };
 
   const renderItem = ({ item }: { item: Challenge }) => {
@@ -55,7 +70,9 @@ export default function RetosScreen() {
           <Text style={[styles.rank, { color: rankInfo.color }]}>
             {rankInfo.icon} {item.fromRank} · {item.fromPoints} pts
           </Text>
-          <Text style={styles.time}>⏱ {secondsLeft}s restantes</Text>
+          <Text style={[styles.time, secondsLeft <= 5 && styles.timeCritical]}>
+            ⏱ {secondsLeft}s restantes
+          </Text>
         </View>
         <View style={styles.buttons}>
           <TouchableOpacity style={styles.acceptBtn} onPress={() => handleAccept(item)}>
@@ -104,6 +121,7 @@ const styles = StyleSheet.create({
   username: { color: COLORS.text, fontSize: 16, fontWeight: 'bold' },
   rank: { fontSize: 12, marginTop: 2 },
   time: { color: COLORS.warning, fontSize: 12, marginTop: 2 },
+  timeCritical: { color: COLORS.danger, fontWeight: 'bold' },
   buttons: { gap: 8 },
   acceptBtn: {
     backgroundColor: COLORS.primary, borderRadius: 8,

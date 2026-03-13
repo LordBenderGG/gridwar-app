@@ -27,9 +27,24 @@ export default function LoginScreen() {
       if (profile) {
         setUser(profile);
         router.replace('/(tabs)/home');
+      } else {
+        Alert.alert('Error', 'No se encontró tu perfil. Contacta soporte.');
       }
     } catch (e: any) {
-      Alert.alert('Error', 'Email o contraseña incorrectos');
+      const code = e?.code || '';
+      if (code === 'auth/user-not-found' || code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+        Alert.alert('Error', 'Email o contraseña incorrectos');
+      } else if (code === 'auth/invalid-email') {
+        Alert.alert('Error', 'El formato del email no es válido');
+      } else if (code === 'auth/user-disabled') {
+        Alert.alert('Cuenta suspendida', 'Tu cuenta ha sido desactivada');
+      } else if (code === 'auth/too-many-requests') {
+        Alert.alert('Demasiados intentos', 'Espera unos minutos antes de intentarlo de nuevo');
+      } else if (code === 'auth/network-request-failed') {
+        Alert.alert('Sin conexión', 'Revisa tu conexión a Internet e intenta de nuevo');
+      } else {
+        Alert.alert('Error', 'No se pudo iniciar sesión. Intenta de nuevo.');
+      }
     } finally {
       setLoading(false);
     }

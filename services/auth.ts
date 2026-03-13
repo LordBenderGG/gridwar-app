@@ -4,8 +4,12 @@ import {
   signOut,
   onAuthStateChanged,
   User,
+  deleteUser,
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import {
+  doc, setDoc, getDoc, updateDoc, serverTimestamp,
+  collection, query, where, getDocs, limit,
+} from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from './firebase';
 
@@ -29,6 +33,16 @@ export interface UserProfile {
   createdAt: any;
 }
 
+export const isUsernameTaken = async (username: string): Promise<boolean> => {
+  const q = query(
+    collection(db, 'users'),
+    where('username', '==', username.trim()),
+    limit(1)
+  );
+  const snap = await getDocs(q);
+  return !snap.empty;
+};
+
 export const registerUser = async (
   email: string,
   password: string,
@@ -36,6 +50,12 @@ export const registerUser = async (
   avatar: string,
   photoURL: string | null = null
 ): Promise<UserProfile> => {
+  // Validar username único ANTES de crear la cuenta
+  const taken = await isUsernameTaken(username);
+  if (taken) {
+    throw new Error('Este nombre de usuario ya está en uso. Elige otro.');
+  }
+
   const cred = await createUserWithEmailAndPassword(auth, email, password);
   const profile: UserProfile = {
     uid: cred.user.uid,
@@ -56,7 +76,15 @@ export const registerUser = async (
     lang: 'es',
     createdAt: serverTimestamp(),
   };
-  await setDoc(doc(db, 'users', cred.user.uid), profile);
+
+  try {
+    await setDoc(doc(db, 'users', cred.user.uid), profile);
+  } catch (err) {
+    // Rollback: eliminar cuenta de Auth si no se pudo guardar el perfil
+    await deleteUser(cred.user).catch(() => {});
+    throw err;
+  }
+
   return profile;
 };
 
@@ -82,7 +110,9 @@ export const updateUserProfile = async (uid: string, data: Partial<UserProfile>)
 export const uploadProfilePhoto = async (uid: string, uri: string): Promise<string> => {
   const response = await fetch(uri);
   const blob = await response.blob();
-  const storageRef = ref(storage, `avatars/${uid}/profile.jpg`);
+  // Usar timestamp para invalidar caché al cambiar la foto
+  const timestamp = Date.now();
+  const storageRef = ref(storage, `avatars/${uid}/profile_${timestamp}.jpg`);
   await uploadBytes(storageRef, blob);
   const url = await getDownloadURL(storageRef);
   await updateDoc(doc(db, 'users', uid), { photoURL: url });

@@ -6,14 +6,14 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { registerUser, uploadProfilePhoto } from '../../services/auth';
+import { registerUser, uploadProfilePhoto, isUsernameTaken } from '../../services/auth';
 import { useAuthStore } from '../../store/authStore';
 import AvatarPicker, { AVATAR_LIST } from '../../components/AvatarPicker';
 import { COLORS } from '../../constants/theme';
 
 export default function RegisterScreen() {
   const router = useRouter();
-  const { setUser } = useAuthStore();
+  const { setUser, updateUser } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
@@ -25,7 +25,11 @@ export default function RegisterScreen() {
   const pickPhoto = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permiso requerido', 'Necesitamos acceso a tu galería');
+      Alert.alert(
+        'Permiso requerido',
+        'Necesitamos acceso a tu galería para que puedas subir tu foto.',
+        [{ text: 'Entendido' }]
+      );
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -40,12 +44,12 @@ export default function RegisterScreen() {
     }
   };
 
-  const handleRegister = async () => {
+  const handleNextStep = async () => {
     if (!email.trim() || !password.trim() || !username.trim()) {
       Alert.alert('Error', 'Completa todos los campos');
       return;
     }
-    if (username.length < 3) {
+    if (username.trim().length < 3) {
       Alert.alert('Error', 'El username debe tener al menos 3 caracteres');
       return;
     }
@@ -55,6 +59,22 @@ export default function RegisterScreen() {
     }
     setLoading(true);
     try {
+      const taken = await isUsernameTaken(username.trim());
+      if (taken) {
+        Alert.alert('Nombre en uso', 'Ese nombre de usuario ya existe. Elige otro.');
+        return;
+      }
+      setStep('avatar');
+    } catch {
+      Alert.alert('Error', 'No se pudo verificar el nombre de usuario. Intenta de nuevo.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegister = async () => {
+    setLoading(true);
+    try {
       const profile = await registerUser(
         email.trim(),
         password,
@@ -62,9 +82,13 @@ export default function RegisterScreen() {
         selectedAvatar || 'avatar_1',
         null
       );
+      // Subir foto en segundo plano: no bloquea el acceso a la app
       if (photoUri) {
-        const url = await uploadProfilePhoto(profile.uid, photoUri);
-        profile.photoURL = url;
+        uploadProfilePhoto(profile.uid, photoUri)
+          .then((url) => updateUser({ photoURL: url }))
+          .catch(() => {
+            // Fallo silencioso: el usuario puede cambiar la foto después desde perfil
+          });
       }
       setUser(profile);
       router.replace('/(tabs)/home');
@@ -140,8 +164,12 @@ export default function RegisterScreen() {
             secureTextEntry
           />
 
-          <TouchableOpacity style={styles.btn} onPress={() => setStep('avatar')}>
-            <Text style={styles.btnText}>SIGUIENTE → Elegir avatar</Text>
+          <TouchableOpacity style={styles.btn} onPress={handleNextStep} disabled={loading}>
+            {loading ? (
+              <ActivityIndicator color={COLORS.background} />
+            ) : (
+              <Text style={styles.btnText}>SIGUIENTE → Elegir avatar</Text>
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity onPress={() => router.back()}>

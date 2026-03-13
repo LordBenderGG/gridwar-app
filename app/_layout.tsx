@@ -2,18 +2,32 @@ import '../i18n';
 import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as Notifications from 'expo-notifications';
 import { onAuthChanged, getUserProfile } from '../services/auth';
 import { useAuthStore } from '../store/authStore';
 import { COLORS } from '../constants/theme';
+
+async function requestPushPermissions() {
+  const { status } = await Notifications.requestPermissionsAsync();
+  if (status !== 'granted') return;
+  // Token disponible para uso futuro con FCM
+}
 
 export default function RootLayout() {
   const { setUser, setLoading } = useAuthStore();
 
   useEffect(() => {
+    requestPushPermissions();
+
     const unsub = onAuthChanged(async (firebaseUser) => {
       if (firebaseUser) {
-        const profile = await getUserProfile(firebaseUser.uid);
-        setUser(profile);
+        try {
+          const profile = await getUserProfile(firebaseUser.uid);
+          setUser(profile);
+        } catch {
+          // Si Firestore falla, tratamos al usuario como no autenticado
+          setUser(null);
+        }
       } else {
         setUser(null);
       }

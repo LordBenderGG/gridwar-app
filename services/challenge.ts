@@ -8,7 +8,7 @@ import {
   where,
   serverTimestamp,
   runTransaction,
-  getDocs,
+  getDoc,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { createGame } from './game';
@@ -63,7 +63,8 @@ export const sendChallenge = async (
   await updateDoc(doc(db, 'users', fromUid), { status: 'challenged' });
   await updateDoc(doc(db, 'users', toUid), { status: 'challenged' });
 
-  // Auto-expire after 30s
+  // Auto-expire después de 30s (solo funciona si la app está abierta;
+  // para producción usar Cloud Functions)
   setTimeout(async () => {
     await expireChallenge(challengeId, fromUid, toUid);
   }, CHALLENGE_TIMEOUT_MS + 1000);
@@ -101,6 +102,7 @@ export const rejectChallenge = async (
   toUid: string
 ): Promise<void> => {
   await updateDoc(doc(db, 'challenges', challengeId), { status: 'rejected' });
+  // Penalizar al receptor que rechaza (toUid)
   await penalizeNoAccept(toUid);
   await updateDoc(doc(db, 'users', fromUid), { status: 'available' });
 };
@@ -110,10 +112,10 @@ export const expireChallenge = async (
   fromUid: string,
   toUid: string
 ): Promise<void> => {
-  const snap = await getDocs(
-    query(collection(db, 'challenges'), where('challengeId', '==', challengeId), where('status', '==', 'pending'))
-  );
-  if (snap.empty) return;
+  // Usar getDoc directo en lugar de query para mayor eficiencia
+  const snap = await getDoc(doc(db, 'challenges', challengeId));
+  if (!snap.exists()) return;
+  if (snap.data().status !== 'pending') return;
 
   await updateDoc(doc(db, 'challenges', challengeId), { status: 'expired' });
   await penalizeNoAccept(toUid);
@@ -127,10 +129,12 @@ const penalizeNoAccept = async (uid: string): Promise<void> => {
     if (!snap.exists()) return;
     const data = snap.data();
     const newPoints = Math.max(0, (data.points || 0) + POINTS_NO_ACCEPT);
+    const blockUntil = Date.now() + BLOCK_ON_REJECT_MS;
     transaction.update(userRef, {
       points: newPoints,
       rank: calculateRank(newPoints),
-      blockedUntil: Date.now() + BLOCK_ON_REJECT_MS,
+      // Un solo campo unificado que usan tanto home.tsx como blocked.tsx
+      challengeBlockedUntil: blockUntil,
       status: 'blocked',
     });
   });

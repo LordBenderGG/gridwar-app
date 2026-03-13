@@ -1,8 +1,11 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+// @ts-ignore — getReactNativePersistence solo está en el bundle RN de firebase
+// En runtime, Expo/Metro resuelve 'firebase/auth' al bundle react-native correcto
+import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getDatabase } from 'firebase/database';
 import { getStorage } from 'firebase/storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyBRt608rbqvTf8u9pnquNq-v5j19250VPI',
@@ -16,7 +19,12 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-export const auth = getAuth(app);
+// Persistir la sesión con AsyncStorage para que sobreviva reinicios en Android/iOS
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+export const auth = initializeAuth(app, {
+  persistence: getReactNativePersistence(AsyncStorage),
+});
 export const db = getFirestore(app);
 export const rtdb = getDatabase(app);
 export const storage = getStorage(app);
