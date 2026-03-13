@@ -27,6 +27,7 @@ export interface Challenge {
   status: 'pending' | 'accepted' | 'rejected' | 'expired';
   createdAt: number;
   expiresAt: number;
+  gameId?: string; // se rellena cuando el retado acepta
 }
 
 const CHALLENGE_TIMEOUT_MS = 30 * 1000;
@@ -80,7 +81,13 @@ export const acceptChallenge = async (
 ): Promise<string> => {
   const gameId = uuidv4();
 
-  await updateDoc(doc(db, 'challenges', challengeId), { status: 'accepted' });
+  // Guardar gameId en el challenge ANTES de crear el game,
+  // así el retador (quien escucha onSnapshot en el doc) puede leerlo directamente
+  // sin necesidad de queries compuestas con índices.
+  await updateDoc(doc(db, 'challenges', challengeId), {
+    status: 'accepted',
+    gameId,
+  });
 
   await createGame(
     gameId,
@@ -112,13 +119,14 @@ export const expireChallenge = async (
   fromUid: string,
   toUid: string
 ): Promise<void> => {
-  // Usar getDoc directo en lugar de query para mayor eficiencia
   const snap = await getDoc(doc(db, 'challenges', challengeId));
   if (!snap.exists()) return;
   if (snap.data().status !== 'pending') return;
 
   await updateDoc(doc(db, 'challenges', challengeId), { status: 'expired' });
+  // Penalizar al que no aceptó (toUid) y liberar al retador (fromUid)
   await penalizeNoAccept(toUid);
+  // penalizeNoAccept pone status 'blocked' al toUid, solo liberar al fromUid
   await updateDoc(doc(db, 'users', fromUid), { status: 'available' });
 };
 

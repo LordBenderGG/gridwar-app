@@ -6,7 +6,7 @@ import {
 import { useRouter } from 'expo-router';
 import {
   collection, query, onSnapshot, limit, doc, updateDoc,
-  where, orderBy, getDocs, onSnapshot as fsOnSnapshot,
+  onSnapshot as fsOnSnapshot,
 } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { UserProfile, updateUserProfile } from '../../services/auth';
@@ -73,36 +73,18 @@ export default function HomeScreen() {
       (snap) => {
         if (!snap.exists()) return;
         const data = snap.data();
-        if (data.status === 'accepted') {
+        if (data.status === 'accepted' && data.gameId) {
+          // El gameId lo escribe acceptChallenge directamente en el doc — no hay query compuesta
           clearPendingChallenge();
-          findAndNavigateToGame(data);
+          router.push(`/game/${data.gameId}`);
         } else if (data.status === 'rejected' || data.status === 'expired') {
           clearPendingChallenge();
-          Alert.alert('Reto rechazado', 'El jugador rechazó tu reto o no respondió a tiempo.');
+          Alert.alert('Reto sin respuesta', 'El jugador rechazó tu reto o no respondió a tiempo.');
         }
       }
     );
     return () => unsub();
   }, [sentChallengeId]);
-
-  const findAndNavigateToGame = async (challengeData: any) => {
-    try {
-      const gamesQ = query(
-        collection(db, 'games'),
-        where('player1', 'in', [challengeData.from, challengeData.to]),
-        where('status', '==', 'active'),
-        orderBy('createdAt', 'desc'),
-        limit(1)
-      );
-      const snap = await getDocs(gamesQ);
-      if (!snap.empty) {
-        const gameId = snap.docs[0].id;
-        router.push(`/game/${gameId}`);
-      }
-    } catch (_) {
-      // Si falla la búsqueda, el usuario puede ir a Retos para ver el estado
-    }
-  };
 
   const clearPendingChallenge = () => {
     if (challengeTimeoutRef.current) clearTimeout(challengeTimeoutRef.current);
