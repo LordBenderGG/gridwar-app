@@ -1,0 +1,152 @@
+import {
+  doc,
+  setDoc,
+  updateDoc,
+  onSnapshot,
+  query,
+  collection,
+  where,
+  serverTimestamp,
+  runTransaction,
+  getDocs,
+} from 'firebase/firestore';
+import { db } from './firebase';
+import { createGame } from './game';
+import { calculateRank } from './ranking';
+import { v4 as uuidv4 } from 'uuid';
+
+export interface Challenge {
+  challengeId: string;
+  from: string;
+  fromUsername: string;
+  fromAvatar: string;
+  fromPhotoURL: string | null;
+  fromRank: string;
+  fromPoints: number;
+  to: string;
+  status: 'pending' | 'accepted' | 'rejected' | 'expired';
+  createdAt: number;
+  expiresAt: number;
+}
+
+const CHALLENGE_TIMEOUT_MS = 30 * 1000;
+const BLOCK_ON_REJECT_MS = 30 * 60 * 1000;
+const POINTS_NO_ACCEPT = -50;
+
+export const sendChallenge = async (
+  fromUid: string,
+  fromUsername: string,
+  fromAvatar: string,
+  fromPhotoURL: string | null,
+  fromRank: string,
+  fromPoints: number,
+  toUid: string
+): Promise<string> => {
+  const challengeId = uuidv4();
+  const now = Date.now();
+
+  const challenge: Challenge = {
+    challengeId,
+    from: fromUid,
+    fromUsername,
+    fromAvatar,
+    fromPhotoURL,
+    fromRank,
+    fromPoints,
+    to: toUid,
+    status: 'pending',
+    createdAt: now,
+    expiresAt: now + CHALLENGE_TIMEOUT_MS,
+  };
+
+  await setDoc(doc(db, 'challenges', challengeId), challenge);
+  await updateDoc(doc(db, 'users', fromUid), { status: 'challenged' });
+  await updateDoc(doc(db, 'users', toUid), { status: 'challenged' });
+
+  // Auto-expire after 30s
+  setTimeout(async () => {
+    await expireChallenge(challengeId, fromUid, toUid);
+  }, CHALLENGE_TIMEOUT_MS + 1000);
+
+  return challengeId;
+};
+
+export const acceptChallenge = async (
+  challengeId: string,
+  challenge: Challenge,
+  toUsername: string,
+  toAvatar: string
+): Promise<string> => {
+  const gameId = uuidv4();
+
+  await updateDoc(doc(db, 'challenges', challengeId), { status: 'accepted' });
+
+  await createGame(
+    gameId,
+    challenge.from,
+    challenge.to,
+    challenge.fromUsername,
+    toUsername,
+    challenge.fromAvatar,
+    toAvatar,
+    'global'
+  );
+
+  return gameId;
+};
+
+export const rejectChallenge = async (
+  challengeId: string,
+  fromUid: string,
+  toUid: string
+): Promise<void> => {
+  await updateDoc(doc(db, 'challenges', challengeId), { status: 'rejected' });
+  await penalizeNoAccept(toUid);
+  await updateDoc(doc(db, 'users', fromUid), { status: 'available' });
+};
+
+export const expireChallenge = async (
+  challengeId: string,
+  fromUid: string,
+  toUid: string
+): Promise<void> => {
+  const snap = await getDocs(
+    query(collection(db, 'challenges'), where('challengeId', '==', challengeId), where('status', '==', 'pending'))
+  );
+  if (snap.empty) return;
+
+  await updateDoc(doc(db, 'challenges', challengeId), { status: 'expired' });
+  await penalizeNoAccept(toUid);
+  await updateDoc(doc(db, 'users', fromUid), { status: 'available' });
+};
+
+const penalizeNoAccept = async (uid: string): Promise<void> => {
+  await runTransaction(db, async (transaction) => {
+    const userRef = doc(db, 'users', uid);
+    const snap = await transaction.get(userRef);
+    if (!snap.exists()) return;
+    const data = snap.data();
+    const newPoints = Math.max(0, (data.points || 0) + POINTS_NO_ACCEPT);
+    transaction.update(userRef, {
+      points: newPoints,
+      rank: calculateRank(newPoints),
+      blockedUntil: Date.now() + BLOCK_ON_REJECT_MS,
+      status: 'blocked',
+    });
+  });
+};
+
+export const subscribeToIncomingChallenges = (
+  uid: string,
+  callback: (challenges: Challenge[]) => void
+): (() => void) => {
+  const q = query(
+    collection(db, 'challenges'),
+    where('to', '==', uid),
+    where('status', '==', 'pending')
+  );
+  return onSnapshot(q, (snap) => {
+    const challenges = snap.docs.map((d) => d.data() as Challenge);
+    callback(challenges);
+  });
+};

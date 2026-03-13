@@ -1,0 +1,109 @@
+{
+  "auth": {
+    "login": "Login",
+    "register": "Sign Up",
+    "email": "Email",
+    "password": "Password",
+    "username": "Username",
+    "noAccount": "No account? Sign up",
+    "hasAccount": "Already have an account? Login",
+    "loginError": "Wrong email or password",
+    "registerError": "Registration error",
+    "chooseAvatar": "Choose your avatar",
+    "uploadPhoto": "Upload photo",
+    "welcome": "Welcome to TIKTAK"
+  },
+  "home": {
+    "title": "TIKTAK",
+    "players": "Players",
+    "challenge": "CHALLENGE",
+    "globalMode": "Global Mode",
+    "localMode": "Local WiFi Mode",
+    "searching": "Searching players...",
+    "noPlayers": "No players available",
+    "inGame": "In game",
+    "blocked": "Blocked",
+    "challenged": "Busy"
+  },
+  "game": {
+    "yourTurn": "YOUR TURN",
+    "opponentTurn": "OPPONENT'S TURN",
+    "round": "Round {{round}} of 3",
+    "timeLeft": "{{seconds}}s",
+    "wildcard": "Wildcard",
+    "forfeit": "Forfeit",
+    "waiting": "Waiting...",
+    "roundWin": "You won the round!",
+    "roundLoss": "You lost the round",
+    "draw": "Draw!"
+  },
+  "result": {
+    "victory": "VICTORY!",
+    "defeat": "DEFEAT",
+    "pointsEarned": "+{{points}} points",
+    "pointsLost": "{{points}} points",
+    "gemsEarned": "+{{gems}} gems",
+    "blocked": "Blocked for {{time}}",
+    "playAgain": "Play again",
+    "home": "Home",
+    "rematch": "Rematch"
+  },
+  "challenges": {
+    "title": "Challenges",
+    "incoming": "{{username}} is challenging you",
+    "accept": "ACCEPT",
+    "reject": "Reject",
+    "timeToAccept": "{{seconds}}s to accept",
+    "noChallenge": "No pending challenges"
+  },
+  "ranking": {
+    "title": "Ranking",
+    "champions": "CHAMPIONS",
+    "losers": "LOSERS",
+    "points": "{{points}} pts",
+    "position": "#{{pos}}"
+  },
+  "profile": {
+    "title": "Profile",
+    "stats": "Stats",
+    "history": "History",
+    "wins": "Wins",
+    "losses": "Losses",
+    "played": "Played",
+    "points": "Points",
+    "gems": "Gems",
+    "rank": "Rank",
+    "win": "WIN",
+    "loss": "LOSS",
+    "vs": "vs",
+    "logout": "Logout",
+    "editProfile": "Edit Profile"
+  },
+  "blocked": {
+    "title": "BLOCKED",
+    "subtitle": "You are a loser",
+    "canPlay": "You can play vs AI while you wait",
+    "practiceIA": "Play vs AI",
+    "timeLeft": "Time remaining"
+  },
+  "tournament": {
+    "title": "Tournaments",
+    "create": "Create Tournament",
+    "join": "Join",
+    "start": "Start Tournament",
+    "bracket": "Bracket",
+    "players": "{{count}}/{{max}} players",
+    "prize": "Prize: {{gems}} gems",
+    "waiting": "Waiting for players...",
+    "active": "Active",
+    "finished": "Finished",
+    "champion": "TOURNAMENT CHAMPION!",
+    "gemsWon": "+{{gems}} gems won"
+  },
+  "wildcards": {
+    "title": "Wildcards",
+    "notEnoughGems": "Not enough gems",
+    "alreadyUsed": "Already used a wildcard this turn",
+    "activated": "Wildcard activated!"
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "auth": {
+    "login": "Iniciar Sesión",
+    "register": "Registrarse",
+    "email": "Correo electrónico",
+    "password": "Contraseña",
+    "username": "Nombre de usuario",
+    "noAccount": "¿No tienes cuenta? Regístrate",
+    "hasAccount": "¿Ya tienes cuenta? Inicia sesión",
+    "loginError": "Email o contraseña incorrectos",
+    "registerError": "Error al registrarse",
+    "chooseAvatar": "Elige tu avatar",
+    "uploadPhoto": "Subir foto",
+    "welcome": "Bienvenido a TIKTAK"
+  },
+  "home": {
+    "title": "TIKTAK",
+    "players": "Jugadores",
+    "challenge": "RETAR",
+    "globalMode": "Modo Global",
+    "localMode": "Modo Local WiFi",
+    "searching": "Buscando jugadores...",
+    "noPlayers": "No hay jugadores disponibles",
+    "inGame": "En partida",
+    "blocked": "Bloqueado",
+    "challenged": "Ocupado"
+  },
+  "game": {
+    "yourTurn": "TU TURNO",
+    "opponentTurn": "TURNO RIVAL",
+    "round": "Ronda {{round}} de 3",
+    "timeLeft": "{{seconds}}s",
+    "wildcard": "Comodín",
+    "forfeit": "Rendirse",
+    "waiting": "Esperando...",
+    "roundWin": "¡Ganaste la ronda!",
+    "roundLoss": "Perdiste la ronda",
+    "draw": "¡Empate!"
+  },
+  "result": {
+    "victory": "¡VICTORIA!",
+    "defeat": "DERROTA",
+    "pointsEarned": "+{{points}} puntos",
+    "pointsLost": "{{points}} puntos",
+    "gemsEarned": "+{{gems}} gemas",
+    "blocked": "Bloqueado por {{time}}",
+    "playAgain": "Jugar de nuevo",
+    "home": "Inicio",
+    "rematch": "Revancha"
+  },
+  "challenges": {
+    "title": "Retos",
+    "incoming": "{{username}} te está retando",
+    "accept": "ACEPTAR",
+    "reject": "Rechazar",
+    "timeToAccept": "{{seconds}}s para aceptar",
+    "noChallenge": "Sin retos pendientes"
+  },
+  "ranking": {
+    "title": "Clasificación",
+    "champions": "CAMPEONES",
+    "losers": "PERDEDORES",
+    "points": "{{points}} pts",
+    "position": "#{{pos}}"
+  },
+  "profile": {
+    "title": "Perfil",
+    "stats": "Estadísticas",
+    "history": "Historial",
+    "wins": "Victorias",
+    "losses": "Derrotas",
+    "played": "Jugadas",
+    "points": "Puntos",
+    "gems": "Gemas",
+    "rank": "Rango",
+    "win": "VICTORIA",
+    "loss": "DERROTA",
+    "vs": "vs",
+    "logout": "Cerrar Sesión",
+    "editProfile": "Editar Perfil"
+  },
+  "blocked": {
+    "title": "BLOQUEADO",
+    "subtitle": "Eres un perdedor",
+    "canPlay": "Puedes jugar contra la IA mientras esperas",
+    "practiceIA": "Jugar vs IA",
+    "timeLeft": "Tiempo restante"
+  },
+  "tournament": {
+    "title": "Torneos",
+    "create": "Crear Torneo",
+    "join": "Unirse",
+    "start": "Iniciar Torneo",
+    "bracket": "Bracket",
+    "players": "{{count}}/{{max}} jugadores",
+    "prize": "Premio: {{gems}} gemas",
+    "waiting": "Esperando jugadores...",
+    "active": "En curso",
+    "finished": "Finalizado",
+    "champion": "¡CAMPEÓN DEL TORNEO!",
+    "gemsWon": "+{{gems}} gemas ganadas"
+  },
+  "wildcards": {
+    "title": "Comodines",
+    "notEnoughGems": "No tienes suficientes gemas",
+    "alreadyUsed": "Ya usaste un comodín este turno",
+    "activated": "¡Comodín activado!"
+  }
+}
