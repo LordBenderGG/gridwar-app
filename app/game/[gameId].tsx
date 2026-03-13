@@ -7,7 +7,7 @@ import Animated, {
   useSharedValue, useAnimatedStyle, withSequence, withTiming,
 } from 'react-native-reanimated';
 import {
-  subscribeToGame, subscribeToGameDoc, makeMove,
+  subscribeToGame, subscribeToGameDoc, makeMove, skipTurn,
   checkWinner, isBoardFull, finishRound, forfeitGame,
   CellValue, GameState, GameDoc,
 } from '../../services/game';
@@ -28,44 +28,56 @@ export default function GameScreen() {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(TIMER_TOTAL);
   const [mySymbol, setMySymbol] = useState<'X' | 'O'>('X');
-  const [winningCells, setWinningCells] = useState<number[]>([]);
   const [roundMessage, setRoundMessage] = useState<string | null>(null);
   const [shieldActive, setShieldActive] = useState(false);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Flag para evitar que finishRound se llame dos veces en la misma ronda
+  const finishingRoundRef = useRef(false);
   const shakeAnim = useSharedValue(0);
 
   const shakeStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: shakeAnim.value }],
   }));
 
-  const shake = () => {
-    shakeAnim.value = withSequence(
-      withTiming(-10, { duration: 60 }), withTiming(10, { duration: 60 }),
-      withTiming(-8, { duration: 60 }), withTiming(8, { duration: 60 }),
-      withTiming(0, { duration: 60 })
-    );
-  };
-
+  // Suscripción al GameDoc (Firestore)
   useEffect(() => {
     if (!gameId || !user) return;
-    const unsubDoc = subscribeToGameDoc(gameId, (doc) => {
-      setGameDoc(doc);
-      setMySymbol(doc.player1 === user.uid ? 'X' : 'O');
+    const unsubDoc = subscribeToGameDoc(gameId, (docData) => {
+      setGameDoc(docData);
+      setMySymbol(docData.player1 === user.uid ? 'X' : 'O');
+
+      // Si la partida terminó (el rival se rindió o terminó desde otro dispositivo),
+      // navegar al resultado
+      if (docData.status === 'finished' && docData.winner) {
+        router.replace({
+          pathname: '/game/resultado',
+          params: { gameId, winnerId: docData.winner, myUid: user.uid },
+        });
+      }
     });
+    return () => unsubDoc();
+  }, [gameId, user?.uid]);
+
+  // Suscripción al GameState (Realtime Database)
+  useEffect(() => {
+    if (!gameId || !user) return;
     const unsubState = subscribeToGame(gameId, (state) => {
       setGameState(state);
       setShieldActive(state.shieldActive && state.shieldPlayer !== user.uid);
+      // Resetear flag de ronda cuando cambia el timerStart (nueva ronda iniciada)
+      finishingRoundRef.current = false;
     });
-    return () => { unsubDoc(); unsubState(); };
-  }, [gameId, user]);
+    return () => unsubState();
+  }, [gameId, user?.uid]);
 
+  // Timer
   useEffect(() => {
-    if (!gameState) return;
+    if (!gameState || !user) return;
     if (timerRef.current) clearInterval(timerRef.current);
 
-    const turboBonus = (gameState.turboActive && gameState.turboPlayer === user?.uid) ? 15 : 0;
-    const rivalTimerReduced = gameState.rivalTimerReduced && gameState.currentTurn !== user?.uid;
+    const turboBonus = (gameState.turboActive && gameState.turboPlayer === user.uid) ? 15 : 0;
+    const rivalTimerReduced = gameState.rivalTimerReduced && gameState.currentTurn !== user.uid;
     const maxTime = rivalTimerReduced ? 15 : TIMER_TOTAL + turboBonus;
 
     const updateTimer = () => {
@@ -74,55 +86,86 @@ export default function GameScreen() {
       setSecondsLeft(left);
       if (left === 0) {
         clearInterval(timerRef.current!);
-        handleTimeUp();
+        // Solo actuar si es MI turno
+        if (gameState.currentTurn === user.uid) {
+          handleTimeUp(gameState);
+        }
       }
     };
 
     updateTimer();
     timerRef.current = setInterval(updateTimer, 500);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    // gameState.timerStart y currentTurn son las únicas dependencias necesarias
+    // para reiniciar el timer cuando cambia el turno
   }, [gameState?.timerStart, gameState?.currentTurn]);
 
-  const handleTimeUp = useCallback(async () => {
-    if (!gameDoc || !gameState || !user) return;
-    const isMyTurn = gameState.currentTurn === user.uid;
-    if (!isMyTurn) return;
+  // handleTimeUp recibe gameState como parámetro para evitar closures viejas
+  const handleTimeUp = async (state: GameState) => {
+    if (!gameDoc || !user) return;
     const opponentId = gameDoc.player1 === user.uid ? gameDoc.player2 : gameDoc.player1;
-    await makeMove(gameId!, -1, user.uid, mySymbol, gameState.board, opponentId, gameState.frozenPlayer);
-  }, [gameDoc, gameState, user]);
+    // Pasar el turno sin corromper el tablero
+    await skipTurn(gameId!, opponentId);
+  };
+
+  const resolveRound = useCallback(async (
+    newBoard: CellValue[],
+    currentGameDoc: GameDoc,
+  ) => {
+    if (finishingRoundRef.current) return; // evitar doble llamada
+    finishingRoundRef.current = true;
+
+    const winner = checkWinner(newBoard);
+    const full = isBoardFull(newBoard);
+    if (!winner && !full) {
+      finishingRoundRef.current = false;
+      return;
+    }
+
+    const opponentId = currentGameDoc.player1 === user!.uid
+      ? currentGameDoc.player2
+      : currentGameDoc.player1;
+    const winnerId = winner
+      ? (winner === (currentGameDoc.player1 === user!.uid ? 'X' : 'O') ? user!.uid : opponentId)
+      : null;
+
+    const { matchWinner } = await finishRound(
+      gameId!,
+      winnerId,
+      currentGameDoc.score,
+      currentGameDoc.player1,
+      currentGameDoc.player2
+    );
+
+    if (matchWinner) {
+      router.replace({
+        pathname: '/game/resultado',
+        params: { gameId, winnerId: matchWinner, myUid: user!.uid },
+      });
+    } else {
+      const msg = winnerId === user!.uid ? '¡Ganaste la ronda!' : winnerId ? 'Perdiste la ronda' : '¡Empate!';
+      setRoundMessage(msg);
+      setTimeout(() => setRoundMessage(null), 2000);
+    }
+  }, [gameId, user?.uid]);
 
   const handleCellPress = async (index: number) => {
     if (!gameDoc || !gameState || !user) return;
     if (gameState.currentTurn !== user.uid) return;
+    if (finishingRoundRef.current) return; // ronda ya resolviéndose
     if (gameState.frozenPlayer === user.uid) {
       Alert.alert('Congelado ❄️', 'Pierdes este turno');
+      await skipTurn(gameId!, gameDoc.player1 === user.uid ? gameDoc.player2 : gameDoc.player1);
       return;
     }
 
     const opponentId = gameDoc.player1 === user.uid ? gameDoc.player2 : gameDoc.player1;
     await makeMove(gameId!, index, user.uid, mySymbol, gameState.board, opponentId, gameState.frozenPlayer);
 
+    // Calcular resultado con el board actualizado localmente
     const newBoard = [...gameState.board];
     newBoard[index] = mySymbol;
-    const winner = checkWinner(newBoard);
-    const full = isBoardFull(newBoard);
-
-    if (winner || full) {
-      const winnerId = winner === mySymbol ? user.uid : (winner ? opponentId : null);
-      const { matchWinner } = await finishRound(
-        gameId!, winnerId, gameDoc.score, gameDoc.player1, gameDoc.player2
-      );
-      if (matchWinner) {
-        router.replace({
-          pathname: '/game/resultado',
-          params: { gameId, winnerId: matchWinner, myUid: user.uid },
-        });
-      } else {
-        const msg = winnerId === user.uid ? '¡Ganaste la ronda!' : winnerId ? 'Perdiste la ronda' : '¡Empate!';
-        setRoundMessage(msg);
-        setTimeout(() => setRoundMessage(null), 2000);
-      }
-    }
+    await resolveRound(newBoard, gameDoc);
   };
 
   const handleWildcard = async (wildcardId: string) => {
@@ -182,7 +225,7 @@ export default function GameScreen() {
             style={styles.playerAvatar}
           />
           <Text style={styles.playerName}>{user?.username}</Text>
-          <Text style={[styles.symbolLabel, { color: COLORS.X }]}>X</Text>
+          <Text style={[styles.symbolLabel, { color: COLORS.X }]}>{mySymbol}</Text>
           {isMyTurn && <Text style={styles.turnIndicator}>TU TURNO</Text>}
         </View>
 
@@ -194,7 +237,9 @@ export default function GameScreen() {
             style={styles.playerAvatar}
           />
           <Text style={styles.playerName}>{opponentUsername}</Text>
-          <Text style={[styles.symbolLabel, { color: COLORS.O }]}>O</Text>
+          <Text style={[styles.symbolLabel, { color: COLORS.O }]}>
+            {mySymbol === 'X' ? 'O' : 'X'}
+          </Text>
           {!isMyTurn && <Text style={styles.turnIndicator}>SU TURNO</Text>}
         </View>
       </View>
@@ -220,11 +265,11 @@ export default function GameScreen() {
         <Board
           board={gameState.board}
           onCellPress={handleCellPress}
-          disabled={!isMyTurn}
+          disabled={!isMyTurn || finishingRoundRef.current}
           blindActive={isBlind}
           confusionActive={isConfused}
           mySymbol={mySymbol}
-          winningCells={winningCells}
+          winningCells={[]}
         />
       </View>
 

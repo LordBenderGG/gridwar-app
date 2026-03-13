@@ -180,6 +180,11 @@ export default function HomeScreen() {
 
   const handleRejectChallenge = async () => {
     if (!incomingChallenge || !user) return;
+    // Si el reto ya expiró por tiempo, no penalizar — expireChallenge ya lo manejó
+    if (Date.now() > incomingChallenge.expiresAt) {
+      setIncomingChallenge(null);
+      return;
+    }
     try {
       await rejectChallenge(incomingChallenge.challengeId, incomingChallenge.from, user.uid);
     } catch (_) {}

@@ -38,6 +38,10 @@ export default function RetosScreen() {
 
   const handleAccept = async (challenge: Challenge) => {
     if (!user) return;
+    if (Date.now() > challenge.expiresAt) {
+      Alert.alert('Reto expirado', 'Este reto ya no está disponible.');
+      return;
+    }
     try {
       const gameId = await acceptChallenge(challenge.challengeId, challenge, user.username, user.avatar);
       router.push(`/game/${gameId}`);

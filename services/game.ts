@@ -135,6 +135,7 @@ export const makeMove = async (
   opponentId: string,
   frozenPlayer: string | null
 ): Promise<void> => {
+  if (cell < 0 || cell > 8) return; // ignorar celdas inválidas
   if (currentBoard[cell] !== '') return;
 
   const newBoard = [...currentBoard];
@@ -149,6 +150,19 @@ export const makeMove = async (
     wildcardUsed: false,
     frozenPlayer: null,
     lastMove: { player, cell },
+  });
+};
+
+// Pasa el turno sin hacer movimiento (cuando se agota el tiempo)
+export const skipTurn = async (
+  gameId: string,
+  opponentId: string
+): Promise<void> => {
+  await update(ref(rtdb, `games/${gameId}`), {
+    currentTurn: opponentId,
+    timerStart: Date.now(),
+    wildcardUsed: false,
+    frozenPlayer: null,
   });
 };
 

@@ -34,10 +34,17 @@ const ChallengeModal: React.FC<ChallengeModalProps> = ({
     if (!challenge) return;
     setSecondsLeft(ACCEPT_TIMEOUT);
 
+    // Calcular cuánto tiempo queda realmente según expiresAt del servidor
+    const realSecondsLeft = Math.max(0, Math.floor((challenge.expiresAt - Date.now()) / 1000));
+    setSecondsLeft(Math.min(realSecondsLeft, ACCEPT_TIMEOUT));
+
     intervalRef.current = setInterval(() => {
       setSecondsLeft((prev) => {
         if (prev <= 1) {
           clearInterval(intervalRef.current!);
+          // Solo llamar onReject si el reto genuinamente no fue aceptado.
+          // El listener de Firestore en home.tsx ya maneja el expire;
+          // aquí solo cerramos el modal sin penalizar de nuevo.
           onReject();
           return 0;
         }
