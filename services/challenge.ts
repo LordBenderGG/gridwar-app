@@ -13,7 +13,14 @@ import {
 import { db } from './firebase';
 import { createGame } from './game';
 import { calculateRank } from './ranking';
-import { v4 as uuidv4 } from 'uuid';
+
+// Generador de IDs único compatible con Hermes (sin crypto.getRandomValues)
+function generateId(): string {
+  const timestamp = Date.now().toString(36);
+  const random1 = Math.random().toString(36).substring(2, 9);
+  const random2 = Math.random().toString(36).substring(2, 9);
+  return `${timestamp}-${random1}-${random2}`;
+}
 
 export interface Challenge {
   challengeId: string;
@@ -43,7 +50,7 @@ export const sendChallenge = async (
   fromPoints: number,
   toUid: string
 ): Promise<string> => {
-  const challengeId = uuidv4();
+  const challengeId = generateId();
   const now = Date.now();
 
   const challenge: Challenge = {
@@ -79,7 +86,7 @@ export const acceptChallenge = async (
   toUsername: string,
   toAvatar: string
 ): Promise<string> => {
-  const gameId = uuidv4();
+  const gameId = generateId();
 
   // Guardar gameId en el challenge ANTES de crear el game,
   // así el retador (quien escucha onSnapshot en el doc) puede leerlo directamente
