@@ -10,6 +10,7 @@ import {
   doc, setDoc, getDoc, updateDoc, serverTimestamp,
   collection, query, where, getDocs, limit,
 } from 'firebase/firestore';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { auth, db } from './firebase';
 
 export interface UserProfile {
@@ -107,15 +108,25 @@ export const updateUserProfile = async (uid: string, data: Partial<UserProfile>)
 };
 
 /**
- * Guarda la foto de perfil como base64 directamente en el documento de Firestore.
- * Recibe la cadena base64 pura (sin prefijo data:image/...) que devuelve expo-image-picker.
- * Se almacena con prefijo data:image/jpeg;base64, para que <Image source={{uri}} /> la muestre.
+ * Optimiza y guarda la foto de perfil como base64 en el documento de Firestore.
+ * Recibe el uri local que devuelve expo-image-picker.
  *
- * IMPORTANTE: Firestore tiene límite de 1MB por documento. Usar quality ≤ 0.4 al capturar
- * la imagen para mantener el tamaño bajo.
+ * Pipeline de optimización:
+ *   1. Redimensiona a 256×256 px (suficiente para avatar circular)
+ *   2. Convierte a JPEG con calidad 0.6
+ *   3. Exporta como base64
+ * Resultado típico: ~15-40 KB — muy por debajo del límite de 1MB de Firestore.
  */
-export const uploadProfilePhoto = async (uid: string, base64: string): Promise<string> => {
-  const photoURL = `data:image/jpeg;base64,${base64}`;
+export const uploadProfilePhoto = async (uid: string, uri: string): Promise<string> => {
+  const result = await ImageManipulator.manipulateAsync(
+    uri,
+    [{ resize: { width: 256, height: 256 } }],
+    { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+  );
+
+  if (!result.base64) throw new Error('No se pudo procesar la imagen');
+
+  const photoURL = `data:image/jpeg;base64,${result.base64}`;
   await updateDoc(doc(db, 'users', uid), { photoURL });
   return photoURL;
 };

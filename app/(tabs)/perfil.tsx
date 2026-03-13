@@ -74,11 +74,10 @@ export default function PerfilScreen() {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.3,   // Bajo para que quepa en Firestore (<1MB por documento)
-        base64: true,
+        quality: 1, // La optimización la hace uploadProfilePhoto con expo-image-manipulator
       });
-      if (!result.canceled && result.assets[0].base64) {
-        const photoURL = await uploadProfilePhoto(user.uid, result.assets[0].base64);
+      if (!result.canceled) {
+        const photoURL = await uploadProfilePhoto(user.uid, result.assets[0].uri);
         updateUser({ photoURL });
       }
     } catch {
