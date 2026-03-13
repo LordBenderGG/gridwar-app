@@ -10,8 +10,7 @@ import {
   doc, setDoc, getDoc, updateDoc, serverTimestamp,
   collection, query, where, getDocs, limit,
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { auth, db, storage } from './firebase';
+import { auth, db } from './firebase';
 
 export interface UserProfile {
   uid: string;
@@ -107,16 +106,18 @@ export const updateUserProfile = async (uid: string, data: Partial<UserProfile>)
   await updateDoc(doc(db, 'users', uid), data as any);
 };
 
-export const uploadProfilePhoto = async (uid: string, uri: string): Promise<string> => {
-  const response = await fetch(uri);
-  const blob = await response.blob();
-  // Usar timestamp para invalidar caché al cambiar la foto
-  const timestamp = Date.now();
-  const storageRef = ref(storage, `avatars/${uid}/profile_${timestamp}.jpg`);
-  await uploadBytes(storageRef, blob);
-  const url = await getDownloadURL(storageRef);
-  await updateDoc(doc(db, 'users', uid), { photoURL: url });
-  return url;
+/**
+ * Guarda la foto de perfil como base64 directamente en el documento de Firestore.
+ * Recibe la cadena base64 pura (sin prefijo data:image/...) que devuelve expo-image-picker.
+ * Se almacena con prefijo data:image/jpeg;base64, para que <Image source={{uri}} /> la muestre.
+ *
+ * IMPORTANTE: Firestore tiene límite de 1MB por documento. Usar quality ≤ 0.4 al capturar
+ * la imagen para mantener el tamaño bajo.
+ */
+export const uploadProfilePhoto = async (uid: string, base64: string): Promise<string> => {
+  const photoURL = `data:image/jpeg;base64,${base64}`;
+  await updateDoc(doc(db, 'users', uid), { photoURL });
+  return photoURL;
 };
 
 export const onAuthChanged = (callback: (user: User | null) => void) => {

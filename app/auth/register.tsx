@@ -18,7 +18,8 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState(AVATAR_LIST[0]);
-  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);   // solo para preview
+  const [photoBase64, setPhotoBase64] = useState<string | null>(null); // para guardar en Firestore
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<'data' | 'avatar'>('data');
 
@@ -36,10 +37,12 @@ export default function RegisterScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.7,
+      quality: 0.3,  // Bajo para que quepa en Firestore (<1MB por documento)
+      base64: true,
     });
-    if (!result.canceled) {
-      setPhotoUri(result.assets[0].uri);
+    if (!result.canceled && result.assets[0].base64) {
+      setPhotoUri(result.assets[0].uri);       // preview local
+      setPhotoBase64(result.assets[0].base64); // se guardará en Firestore
       setSelectedAvatar('');
     }
   };
@@ -83,9 +86,9 @@ export default function RegisterScreen() {
         null
       );
       // Subir foto en segundo plano: no bloquea el acceso a la app
-      if (photoUri) {
-        uploadProfilePhoto(profile.uid, photoUri)
-          .then((url) => updateUser({ photoURL: url }))
+      if (photoBase64) {
+        uploadProfilePhoto(profile.uid, photoBase64)
+          .then((photoURL) => updateUser({ photoURL }))
           .catch(() => {
             // Fallo silencioso: el usuario puede cambiar la foto después desde perfil
           });

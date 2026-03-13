@@ -74,11 +74,12 @@ export default function PerfilScreen() {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.7,
+        quality: 0.3,   // Bajo para que quepa en Firestore (<1MB por documento)
+        base64: true,
       });
-      if (!result.canceled) {
-        const url = await uploadProfilePhoto(user.uid, result.assets[0].uri);
-        updateUser({ photoURL: url });
+      if (!result.canceled && result.assets[0].base64) {
+        const photoURL = await uploadProfilePhoto(user.uid, result.assets[0].base64);
+        updateUser({ photoURL });
       }
     } catch {
       Alert.alert('Error', 'No se pudo cambiar la foto. Intenta de nuevo.');
