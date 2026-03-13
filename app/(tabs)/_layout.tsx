@@ -3,6 +3,7 @@ import { Tabs } from 'expo-router';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../store/authStore';
 import { Ionicons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
 
 export default function TabsLayout() {
@@ -25,12 +26,13 @@ export default function TabsLayout() {
           backgroundColor: COLORS.surface,
           borderTopColor: COLORS.border,
           borderTopWidth: 1,
-          height: 60,
+          height: 64,
           paddingBottom: 8,
+          paddingTop: 4,
         },
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textSecondary,
-        tabBarLabelStyle: { fontSize: 10, fontWeight: '600' },
+        tabBarLabelStyle: { fontSize: 9, fontWeight: '600' },
       }}
     >
       <Tabs.Screen
@@ -45,7 +47,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="clasificacion"
         options={{
-          title: 'Ranking',
+          title: 'Campeones',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="trophy" size={size} color={color} />
           ),
@@ -58,6 +60,16 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="flash" size={size} color={color} />
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="salon"
+        options={{
+          title: 'Vergüenza',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="skull" size={size} color={color} />
+          ),
+          tabBarActiveTintColor: COLORS.danger,
         }}
       />
       <Tabs.Screen

@@ -2,39 +2,45 @@ import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Image, ActivityIndicator,
 } from 'react-native';
-import { subscribeToTopPlayers, subscribeToBottomPlayers, getWinnerTitle, getLoserTitle, getRankInfo } from '../../services/ranking';
+import { subscribeToTopPlayers, getWinnerTitle, getRankInfo } from '../../services/ranking';
 import { UserProfile } from '../../services/auth';
 import { AVATARS } from '../../components/AvatarPicker';
 import { COLORS } from '../../constants/theme';
 
-const PlayerRow: React.FC<{ player: UserProfile; position: number; type: 'winner' | 'loser' }> = ({
-  player, position, type,
+const ChampionRow: React.FC<{ player: UserProfile; position: number }> = ({
+  player, position,
 }) => {
   const rankInfo = getRankInfo(player.rank);
   const avatarSource = player.photoURL ? { uri: player.photoURL } : AVATARS[player.avatar] || AVATARS['avatar_1'];
-  const title = type === 'winner' ? getWinnerTitle(position) : getLoserTitle(position);
+  const title = getWinnerTitle(position);
+
+  const medalColors = ['#FFD700', '#C0C0C0', '#CD7F32'];
+  const posColor = position <= 3 ? medalColors[position - 1] : COLORS.textSecondary;
 
   return (
-    <View style={[styles.row, type === 'loser' && styles.loserRow]}>
-      <Text style={[styles.position, type === 'loser' && styles.loserPosition]}>
-        {type === 'winner' ? `#${position}` : `💀${position}`}
+    <View style={[styles.row, position === 1 && styles.topRow]}>
+      <Text style={[styles.position, { color: posColor }]}>
+        {position <= 3 ? ['🥇', '🥈', '🥉'][position - 1] : `#${position}`}
       </Text>
-      <Image source={avatarSource} style={styles.avatar} />
+      <Image source={avatarSource} style={[styles.avatar, position === 1 && styles.topAvatar]} />
       <View style={styles.info}>
-        <Text style={styles.username}>{player.username}</Text>
-        <Text style={[styles.title, type === 'loser' && styles.loserTitle]} numberOfLines={1}>
-          {title}
-        </Text>
+        <Text style={[styles.username, position === 1 && styles.topUsername]}>{player.username}</Text>
+        <Text style={styles.title} numberOfLines={1}>{title}</Text>
         <Text style={[styles.rank, { color: rankInfo.color }]}>
           {rankInfo.icon} {player.rank}
         </Text>
       </View>
       <View style={styles.right}>
-        <Text style={[styles.points, type === 'loser' && styles.loserPoints]}>
+        <Text style={[styles.points, position <= 3 && { color: posColor }]}>
           {player.points} pts
         </Text>
         <Text style={styles.record}>
           {player.wins}W / {player.losses}L
+        </Text>
+        <Text style={styles.winRate}>
+          {player.gamesPlayed > 0
+            ? `${Math.round((player.wins / player.gamesPlayed) * 100)}% victorias`
+            : 'Sin partidas'}
         </Text>
       </View>
     </View>
@@ -43,21 +49,14 @@ const PlayerRow: React.FC<{ player: UserProfile; position: number; type: 'winner
 
 export default function ClasificacionScreen() {
   const [topPlayers, setTopPlayers] = useState<UserProfile[]>([]);
-  const [bottomPlayers, setBottomPlayers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubTop = subscribeToTopPlayers((players) => {
+    const unsub = subscribeToTopPlayers((players) => {
       setTopPlayers(players);
       setLoading(false);
-    });
-    const unsubBottom = subscribeToBottomPlayers((players) => {
-      setBottomPlayers(players);
-    });
-    return () => {
-      unsubTop();
-      unsubBottom();
-    };
+    }, 20);
+    return () => unsub();
   }, []);
 
   if (loading) {
@@ -69,124 +68,100 @@ export default function ClasificacionScreen() {
   }
 
   return (
-    <FlatList
-      style={styles.container}
-      data={[]}
-      renderItem={null}
-      ListHeaderComponent={
-        <>
-          <Text style={styles.screenTitle}>CLASIFICACIÓN</Text>
+    <View style={styles.container}>
+      <Text style={styles.screenTitle}>🏆 CLASIFICACIÓN</Text>
+      <Text style={styles.screenSubtitle}>Los mejores jugadores del tablero</Text>
 
-          {/* CAMPEONES */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>🏆 CAMPEONES</Text>
-              <Text style={styles.sectionSubtitle}>Los mejores del tablero</Text>
-            </View>
-            {topPlayers.map((p, i) => (
-              <PlayerRow key={p.uid} player={p} position={i + 1} type="winner" />
-            ))}
-          </View>
-
-          {/* PERDEDORES */}
-          <View style={[styles.section, styles.loserSection]}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, styles.loserSectionTitle]}>💀 SALÓN DE LA VERGÜENZA</Text>
-              <Text style={styles.sectionSubtitle}>Los peores... sin piedad</Text>
-            </View>
-            {bottomPlayers.map((p, i) => (
-              <PlayerRow key={p.uid} player={p} position={i + 1} type="loser" />
-            ))}
-          </View>
-        </>
-      }
-    />
+      <FlatList
+        data={topPlayers}
+        keyExtractor={(item) => item.uid}
+        renderItem={({ item, index }) => (
+          <ChampionRow player={item} position={index + 1} />
+        )}
+        ListEmptyComponent={
+          <Text style={styles.empty}>Aún no hay jugadores clasificados</Text>
+        }
+        contentContainerStyle={{ paddingBottom: 24 }}
+        showsVerticalScrollIndicator={false}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background, paddingTop: 50 },
+  container: { flex: 1, backgroundColor: COLORS.background, paddingTop: 50, paddingHorizontal: 16 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background },
   screenTitle: {
     fontSize: 24,
     fontWeight: '900',
-    color: COLORS.primary,
-    textAlign: 'center',
-    letterSpacing: 4,
-    marginBottom: 20,
-    textShadowColor: COLORS.primary,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
-  },
-  section: {
-    marginHorizontal: 16,
-    marginBottom: 24,
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  loserSection: {
-    borderColor: COLORS.danger,
-  },
-  sectionHeader: {
-    backgroundColor: COLORS.surfaceLight,
-    padding: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  sectionTitle: {
     color: COLORS.warning,
-    fontSize: 16,
-    fontWeight: 'bold',
-    letterSpacing: 1,
+    textAlign: 'center',
+    letterSpacing: 3,
+    marginBottom: 4,
+    textShadowColor: COLORS.warning,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
   },
-  loserSectionTitle: {
-    color: COLORS.danger,
-  },
-  sectionSubtitle: {
+  screenSubtitle: {
     color: COLORS.textSecondary,
-    fontSize: 11,
-    marginTop: 2,
+    fontSize: 12,
+    textAlign: 'center',
+    marginBottom: 20,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
     backgroundColor: COLORS.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderRadius: 12,
+    padding: 12,
+    marginVertical: 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  loserRow: {
-    backgroundColor: 'rgba(255,59,48,0.05)',
+  topRow: {
+    borderColor: '#FFD700',
+    borderWidth: 2,
+    backgroundColor: 'rgba(255,215,0,0.05)',
   },
   position: {
-    color: COLORS.warning,
     fontWeight: 'bold',
-    fontSize: 14,
-    width: 36,
-  },
-  loserPosition: {
-    color: COLORS.danger,
+    fontSize: 20,
+    width: 40,
+    textAlign: 'center',
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    marginRight: 10,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 12,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+  },
+  topAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderColor: '#FFD700',
+    borderWidth: 2,
   },
   info: { flex: 1 },
-  username: { color: COLORS.text, fontWeight: 'bold', fontSize: 14 },
+  username: { color: COLORS.text, fontWeight: 'bold', fontSize: 15 },
+  topUsername: { fontSize: 16, color: '#FFD700' },
   title: {
     color: COLORS.primary,
     fontSize: 10,
     marginTop: 1,
     fontStyle: 'italic',
   },
-  loserTitle: { color: COLORS.danger },
-  rank: { fontSize: 11, marginTop: 1 },
+  rank: { fontSize: 11, marginTop: 2 },
   right: { alignItems: 'flex-end' },
-  points: { color: COLORS.success, fontWeight: 'bold', fontSize: 14 },
-  loserPoints: { color: COLORS.danger },
+  points: { color: COLORS.success, fontWeight: 'bold', fontSize: 15 },
   record: { color: COLORS.textSecondary, fontSize: 11, marginTop: 2 },
+  winRate: { color: COLORS.textSecondary, fontSize: 10, marginTop: 1 },
+  empty: {
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: 60,
+    fontSize: 14,
+  },
 });
