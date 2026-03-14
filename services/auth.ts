@@ -95,7 +95,7 @@ export const registerUser = async (
     avatar,
     photoURL,
     points: WELCOME_POINTS,
-    gems: 0,
+    gems: 10,
     rank: 'Novato',
     wins: 0,
     losses: 0,

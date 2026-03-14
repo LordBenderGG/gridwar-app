@@ -10,7 +10,7 @@
  * Esto garantiza que SOLO los usuarios con la app abierta aparezcan como disponibles.
  */
 import { ref, onValue, onDisconnect, set, serverTimestamp, off } from 'firebase/database';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { rtdb, db } from './firebase';
 
 export interface PresenceData {
@@ -44,6 +44,19 @@ export const registerPresence = (uid: string): (() => void) => {
   updateDoc(doc(db, 'users', uid), { status: 'available' }).catch(() => {
     // Ignorar errores silenciosamente (ej: sin conexión al arrancar)
   });
+
+  // Dar gems de bienvenida a usuarios existentes que aún no los tienen.
+  // Se ejecuta una sola vez gracias al flag welcomeGemsGiven.
+  getDoc(doc(db, 'users', uid)).then((snap) => {
+    if (!snap.exists()) return;
+    const data = snap.data();
+    if (!data.welcomeGemsGiven && (data.gems === undefined || data.gems < 5)) {
+      updateDoc(doc(db, 'users', uid), {
+        gems: 10,
+        welcomeGemsGiven: true,
+      }).catch(() => {});
+    }
+  }).catch(() => {});
 
   // Devolver función de cleanup (marca offline de forma explícita al hacer logout)
   return () => {
