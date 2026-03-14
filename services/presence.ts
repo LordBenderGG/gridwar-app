@@ -10,7 +10,8 @@
  * Esto garantiza que SOLO los usuarios con la app abierta aparezcan como disponibles.
  */
 import { ref, onValue, onDisconnect, set, serverTimestamp, off } from 'firebase/database';
-import { rtdb } from './firebase';
+import { doc, updateDoc } from 'firebase/firestore';
+import { rtdb, db } from './firebase';
 
 export interface PresenceData {
   online: boolean;
@@ -31,10 +32,17 @@ export const registerPresence = (uid: string): (() => void) => {
     lastSeen: serverTimestamp(),
   });
 
-  // Marcar como online ahora
+  // Marcar como online ahora en RTDB
   set(presenceRef, {
     online: true,
     lastSeen: serverTimestamp(),
+  });
+
+  // Resetear status a 'available' en Firestore al abrir la app.
+  // Esto corrige el caso donde el usuario cerró la app mientras estaba
+  // in_game/challenged y el status quedó persistido en AsyncStorage.
+  updateDoc(doc(db, 'users', uid), { status: 'available' }).catch(() => {
+    // Ignorar errores silenciosamente (ej: sin conexión al arrancar)
   });
 
   // Devolver función de cleanup (marca offline de forma explícita al hacer logout)

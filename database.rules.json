@@ -1,16 +1,17 @@
 {
   "rules": {
+    // Presencia: cualquier auth puede leer todo el nodo /presence
+    // Solo el dueño puede escribir su propia presencia
     "presence": {
+      ".read": "auth != null",
       "$uid": {
-        ".read": "auth != null",
         ".write": "auth != null && auth.uid == $uid"
       }
     },
+    // Estados de partida en tiempo real: ambos jugadores necesitan leer y escribir
     "games": {
-      "$gameId": {
-        ".read": "auth != null",
-        ".write": "auth != null"
-      }
+      ".read": "auth != null",
+      ".write": "auth != null"
     }
   }
 }

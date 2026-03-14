@@ -10,7 +10,7 @@ import {
   onSnapshot as fsOnSnapshot,
 } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import { UserProfile, updateUserProfile } from '../../services/auth';
+import { UserProfile } from '../../services/auth';
 import { sendChallenge, subscribeToIncomingChallenges, acceptChallenge, rejectChallenge, Challenge } from '../../services/challenge';
 import { subscribeToAllPresence } from '../../services/presence';
 import { useAuthStore } from '../../store/authStore';
@@ -201,6 +201,29 @@ export default function HomeScreen() {
     setTimeout(() => setRefreshing(false), 800);
   }, []);
 
+  // ── Lógica de filtrado ──────────────────────────────────────────────────────
+  // myMode: 'global' solo ve a jugadores globales; 'local' ve a todos
+  const myMode = user?.mode ?? 'global';
+
+  // rtdbLoaded: el mapa de presencia ya recibió al menos un dato de RTDB.
+  // Si aún no cargó, usamos solo Firestore (status='available') para no
+  // mostrar la lista vacía mientras RTDB inicializa.
+  const rtdbLoaded = onlineMap.size > 0;
+
+  const filteredByMode = players.filter((p) =>
+    myMode === 'global' ? p.mode === 'global' : true
+  );
+
+  const onlinePlayers = filteredByMode.filter((p) => {
+    const availableInFirestore = p.status === 'available';
+    if (!rtdbLoaded) return availableInFirestore;
+    return availableInFirestore && onlineMap.get(p.uid) === true;
+  });
+
+  const filtered = onlinePlayers.filter((p) =>
+    p.username.toLowerCase().includes(search.toLowerCase())
+  );
+
   const canChallenge = (target: UserProfile): boolean => {
     if (!user) return false;
     if (user.status !== 'available') return false;
@@ -210,11 +233,19 @@ export default function HomeScreen() {
     return true;
   };
 
-  // Solo mostrar jugadores que tienen la app abierta (online: true en RTDB)
-  const onlinePlayers = players.filter((p) => onlineMap.get(p.uid) === true);
-  const filtered = onlinePlayers.filter((p) =>
-    p.username.toLowerCase().includes(search.toLowerCase())
-  );
+  const myStatus = user?.status || 'available';
+  const statusColor = myStatus === 'available' ? COLORS.success : myStatus === 'in_game' ? COLORS.warning : COLORS.danger;
+  const statusLabel = myStatus === 'available' ? '● EN LÍNEA' : myStatus === 'in_game' ? '● EN PARTIDA' : '● OCUPADO';
+
+  const handleToggleMode = async () => {
+    if (!user) return;
+    const newMode = myMode === 'global' ? 'local' : 'global';
+    try {
+      await updateDoc(doc(db, 'users', user.uid), { mode: newMode });
+    } catch {
+      Alert.alert('Error', 'No se pudo cambiar el modo.');
+    }
+  };
 
   // Pantalla de "esperando respuesta al reto"
   if (sentChallengeId && sentChallengeTo) {
@@ -241,10 +272,6 @@ export default function HomeScreen() {
     );
   }
 
-  const myStatus = user?.status || 'available';
-  const statusColor = myStatus === 'available' ? COLORS.success : myStatus === 'in_game' ? COLORS.warning : COLORS.danger;
-  const statusLabel = myStatus === 'available' ? '● EN LÍNEA' : myStatus === 'in_game' ? '● EN PARTIDA' : '● OCUPADO';
-
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -257,6 +284,15 @@ export default function HomeScreen() {
           <View style={[styles.statusPill, { borderColor: statusColor }]}>
             <Text style={[styles.statusPillText, { color: statusColor }]}>{statusLabel}</Text>
           </View>
+          {/* Botón modo global / local */}
+          <TouchableOpacity
+            style={[styles.modePill, { borderColor: myMode === 'global' ? COLORS.primary : COLORS.accent }]}
+            onPress={handleToggleMode}
+          >
+            <Text style={[styles.modePillText, { color: myMode === 'global' ? COLORS.primary : COLORS.accent }]}>
+              {myMode === 'global' ? '🌍 GLOBAL' : '📍 LOCAL'}
+            </Text>
+          </TouchableOpacity>
           <View style={styles.gemsBadge}>
             <Text style={styles.gemsText}>💎 {user?.gems || 0}</Text>
           </View>
@@ -430,6 +466,13 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   statusPillText: { fontSize: 10, fontWeight: 'bold', letterSpacing: 1 },
+  modePill: {
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  modePillText: { fontSize: 10, fontWeight: 'bold', letterSpacing: 1 },
   gemsBadge: {
     backgroundColor: COLORS.surface,
     borderRadius: 20,

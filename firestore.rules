@@ -2,31 +2,32 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ─── USUARIOS ───────────────────────────────────────────────
-    // Cualquier usuario autenticado puede leer perfiles (para el home y clasificación)
-    // Solo el dueño puede escribir su propio perfil
-    match /users/{uid} {
+    // ── USUARIOS ─────────────────────────────────────────────────────────────
+    // Lectura pública para cualquier auth (home, clasificación, salón)
+    // Escritura: el dueño puede escribir su propio doc.
+    // TAMBIÉN cualquier auth puede actualizar campos de otros usuarios:
+    // esto es necesario para que el sistema cambie status/points/rank del rival
+    // al terminar una partida o procesar un reto (finishMatch, penalizeNoAccept,
+    // sendChallenge, expireChallenge, etc.)
+    match /users/{userId} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null && request.auth.uid == uid;
-      allow update: if request.auth != null && (
-        // El dueño puede actualizar su propio perfil
-        request.auth.uid == uid
-        // O cualquier usuario autenticado puede actualizar campos de estado del juego
-        // (necesario para que el sistema cambie status, points, etc. de otros jugadores)
-        || request.auth != null
-      );
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null;
       allow delete: if false;
-
-      // Historial de partidas — solo el dueño puede leer/escribir
-      match /history/{gameId} {
-        allow read: if request.auth != null && request.auth.uid == uid;
-        allow write: if request.auth != null;
-      }
     }
 
-    // ─── RETOS ──────────────────────────────────────────────────
-    // Cualquier usuario autenticado puede crear y leer retos
-    // Solo los participantes pueden actualizar un reto
+    // Historial de partidas — solo el dueño puede leer/escribir
+    // (el sistema escribe con las credenciales del usuario activo en la sesión)
+    match /users/{userId}/history/{gameId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null;
+    }
+
+    // ── RETOS ────────────────────────────────────────────────────────────────
+    // La query subscribeToIncomingChallenges usa where('to','==',uid) +
+    // where('status','==','pending'). Firestore evalúa las reglas antes de
+    // aplicar el filtro, por lo que la regla de lectura debe ser permisiva
+    // para cualquier usuario autenticado (no solo from/to).
     match /challenges/{challengeId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null;
@@ -34,9 +35,8 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ─── PARTIDAS ───────────────────────────────────────────────
-    // Cualquier usuario autenticado puede leer y escribir partidas
-    // (necesario para que ambos jugadores puedan hacer movimientos)
+    // ── PARTIDAS ─────────────────────────────────────────────────────────────
+    // Ambos jugadores y el sistema necesitan leer y actualizar el doc de partida.
     match /games/{gameId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null;
@@ -44,16 +44,15 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ─── TORNEOS ────────────────────────────────────────────────
+    // ── TORNEOS ──────────────────────────────────────────────────────────────
     match /tournaments/{tournamentId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null;
     }
 
-    // ─── CLASIFICACIÓN / RANKING GLOBAL ─────────────────────────
-    match /ranking/{docId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null;
+    // ── CATCH-ALL: bloquear todo lo demás ────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
