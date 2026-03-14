@@ -18,6 +18,8 @@ interface BoardProps {
   confusionActive?: boolean;
   mySymbol: 'X' | 'O';
   winningCells?: number[];
+  teleportMode?: boolean;
+  teleportFrom?: number | null;
 }
 
 const AnimatedCell: React.FC<{
@@ -28,7 +30,9 @@ const AnimatedCell: React.FC<{
   isWinning: boolean;
   confusionActive: boolean;
   mySymbol: 'X' | 'O';
-}> = ({ value, index, onPress, disabled, isWinning, confusionActive, mySymbol }) => {
+  isTeleportSelected: boolean;
+  isTeleportTarget: boolean;
+}> = ({ value, index, onPress, disabled, isWinning, confusionActive, mySymbol, isTeleportSelected, isTeleportTarget }) => {
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -36,7 +40,10 @@ const AnimatedCell: React.FC<{
   }));
 
   const handlePress = () => {
-    if (disabled || value !== '') return;
+    if (disabled) return;
+    // En modo teleport: la celda de origen (ficha propia) es presionable aunque no esté vacía
+    // La lógica de si es válida la maneja gameId.tsx
+    if (value !== '' && !isTeleportSelected) return;
     scale.value = withSequence(withSpring(0.85), withSpring(1));
     onPress(index);
   };
@@ -47,9 +54,14 @@ const AnimatedCell: React.FC<{
 
   return (
     <TouchableOpacity
-      style={[styles.cell, isWinning && styles.winningCell]}
+      style={[
+        styles.cell,
+        isWinning && styles.winningCell,
+        isTeleportSelected && styles.teleportSelected,
+        isTeleportTarget && styles.teleportTarget,
+      ]}
       onPress={handlePress}
-      disabled={disabled || value !== ''}
+      disabled={disabled || (value !== '' && !isTeleportSelected)}
       activeOpacity={0.7}
     >
       <Animated.View style={animatedStyle}>
@@ -75,6 +87,8 @@ const Board: React.FC<BoardProps> = ({
   confusionActive = false,
   mySymbol,
   winningCells = [],
+  teleportMode = false,
+  teleportFrom = null,
 }) => {
   if (blindActive) {
     return (
@@ -99,6 +113,8 @@ const Board: React.FC<BoardProps> = ({
           isWinning={winningCells.includes(index)}
           confusionActive={confusionActive}
           mySymbol={mySymbol}
+          isTeleportSelected={teleportMode && teleportFrom === index}
+          isTeleportTarget={teleportMode && teleportFrom !== null && cell === ''}
         />
       ))}
     </View>
@@ -127,6 +143,16 @@ const styles = StyleSheet.create({
   },
   winningCell: {
     backgroundColor: 'rgba(0, 245, 255, 0.15)',
+  },
+  teleportSelected: {
+    backgroundColor: 'rgba(0, 245, 255, 0.35)',
+    borderColor: '#00F5FF',
+    borderWidth: 2.5,
+  },
+  teleportTarget: {
+    backgroundColor: 'rgba(0, 245, 255, 0.08)',
+    borderColor: '#00F5FF',
+    borderStyle: 'dashed',
   },
   symbol: {
     fontSize: 52,

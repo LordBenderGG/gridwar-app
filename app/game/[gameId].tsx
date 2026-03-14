@@ -11,13 +11,19 @@ import {
   checkWinner, isBoardFull, finishRound, forfeitGame,
   CellValue, GameState, GameDoc,
 } from '../../services/game';
-import { applyWildcard } from '../../services/wildcards';
+import { applyWildcard, applyTeleportMove } from '../../services/wildcards';
 import { useAuthStore } from '../../store/authStore';
 import Board from '../../components/Board';
 import Timer from '../../components/Timer';
 import WildcardBar from '../../components/WildcardBar';
 import { AVATARS } from '../../components/AvatarPicker';
 import { COLORS, TIMER_TOTAL } from '../../constants/theme';
+
+// Mensaje temporal que aparece en pantalla cuando el rival activa un comodín
+interface WildcardAlert {
+  message: string;
+  color: string;
+}
 
 export default function GameScreen() {
   const { gameId } = useLocalSearchParams<{ gameId: string }>();
@@ -30,25 +36,36 @@ export default function GameScreen() {
   const [mySymbol, setMySymbol] = useState<'X' | 'O'>('X');
   const [roundMessage, setRoundMessage] = useState<string | null>(null);
   const [shieldActive, setShieldActive] = useState(false);
+  const [wildcardAlert, setWildcardAlert] = useState<WildcardAlert | null>(null);
+
+  // ── Teletransporte ────────────────────────────────────────────────────
+  // teleportMode: true cuando el jugador activó el comodín y debe elegir
+  // origen (propia ficha) y luego destino (celda libre).
+  const [teleportMode, setTeleportMode] = useState(false);
+  const [teleportFrom, setTeleportFrom] = useState<number | null>(null);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Flag para evitar que finishRound se llame dos veces en la misma ronda
   const finishingRoundRef = useRef(false);
   const shakeAnim = useSharedValue(0);
+  // Guardamos la versión anterior de gameState para detectar cambios de flags
+  const prevGameStateRef = useRef<GameState | null>(null);
 
   const shakeStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: shakeAnim.value }],
   }));
 
-  // Suscripción al GameDoc (Firestore)
+  // ── Mostrar alerta visual de comodín ─────────────────────────────────
+  const showWildcardAlert = (message: string, color: string) => {
+    setWildcardAlert({ message, color });
+    setTimeout(() => setWildcardAlert(null), 2500);
+  };
+
+  // ── Suscripción al GameDoc (Firestore) ───────────────────────────────
   useEffect(() => {
     if (!gameId || !user) return;
     const unsubDoc = subscribeToGameDoc(gameId, (docData) => {
       setGameDoc(docData);
       setMySymbol(docData.player1 === user.uid ? 'X' : 'O');
-
-      // Si la partida terminó (el rival se rindió o terminó desde otro dispositivo),
-      // navegar al resultado
       if (docData.status === 'finished' && docData.winner) {
         router.replace({
           pathname: '/game/resultado',
@@ -59,26 +76,69 @@ export default function GameScreen() {
     return () => unsubDoc();
   }, [gameId, user?.uid]);
 
-  // Suscripción al GameState (Realtime Database)
+  // ── Suscripción al GameState (Realtime Database) ─────────────────────
   useEffect(() => {
     if (!gameId || !user) return;
     const unsubState = subscribeToGame(gameId, (state) => {
+      const prev = prevGameStateRef.current;
+
+      // Detectar cambios de flags para mostrar feedback al jugador afectado
+      if (prev && user) {
+        // Rival activó freeze → yo soy el rival congelado
+        if (!prev.frozenPlayer && state.frozenPlayer === user.uid) {
+          showWildcardAlert('❄️ ¡Te congelaron! Pierdes este turno', '#00BFFF');
+        }
+        // Rival activó time_reduce → aplica a mi próximo turno
+        if (!prev.rivalTimerReduced && state.rivalTimerReduced && state.currentTurn !== user.uid) {
+          showWildcardAlert('⏱️ ¡Tu rival redujo tu tiempo a 15s!', '#FF6B35');
+        }
+        // Rival activó blind → yo soy el objetivo
+        if (!prev.blindActive && state.blindActive && state.blindTarget === user.uid) {
+          showWildcardAlert('🙈 ¡Tablero oculto este turno!', '#9B59B6');
+        }
+        // Rival activó confusion → yo soy el objetivo
+        if (!prev.confusionActive && state.confusionActive && state.confusionTarget === user.uid) {
+          showWildcardAlert('😵 ¡Confusión! Las fichas están invertidas', '#FF69B4');
+        }
+        // Rival activó shield → yo tengo escudo activo en su contra
+        if (!prev.shieldActive && state.shieldActive && state.shieldPlayer !== user.uid) {
+          showWildcardAlert('🛡️ ¡El rival activó un escudo!', '#34C759');
+        }
+        // Rival activó sabotage → detectado por cambio en board con sus fichas movidas
+        // (difícil detectar directamente; se muestra en el tablero visualmente)
+
+        // Turbo activado por mí → confirmar visualmente
+        if (!prev.turboActive && state.turboActive && state.turboPlayer === user.uid) {
+          showWildcardAlert('⚡ ¡Turbo! Timer reiniciado a 30s', '#FFD700');
+        }
+      }
+
       setGameState(state);
       setShieldActive(state.shieldActive && state.shieldPlayer !== user.uid);
-      // Resetear flag de ronda cuando cambia el timerStart (nueva ronda iniciada)
       finishingRoundRef.current = false;
+      prevGameStateRef.current = state;
+
+      // Si el teleport fue completado por el servidor (teleportPending=false),
+      // salir del modo teleport local
+      if (!state.teleportPending) {
+        setTeleportMode(false);
+        setTeleportFrom(null);
+      }
     });
     return () => unsubState();
   }, [gameId, user?.uid]);
 
-  // Timer
+  // ── Timer ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!gameState || !user) return;
     if (timerRef.current) clearInterval(timerRef.current);
 
+    // turbo reinicia timerStart en RTDB, por lo que timerStart ya está actualizado.
+    // Solo necesitamos calcular maxTime según los flags del estado actual.
+    const isMyTurn = gameState.currentTurn === user.uid;
     const turboBonus = (gameState.turboActive && gameState.turboPlayer === user.uid) ? 15 : 0;
-    const rivalTimerReduced = gameState.rivalTimerReduced && gameState.currentTurn !== user.uid;
-    const maxTime = rivalTimerReduced ? 15 : TIMER_TOTAL + turboBonus;
+    const rivalReducedForMe = gameState.rivalTimerReduced && isMyTurn;
+    const maxTime = rivalReducedForMe ? 15 : TIMER_TOTAL + turboBonus;
 
     const updateTimer = () => {
       const elapsed = Math.floor((Date.now() - gameState.timerStart) / 1000);
@@ -86,8 +146,7 @@ export default function GameScreen() {
       setSecondsLeft(left);
       if (left === 0) {
         clearInterval(timerRef.current!);
-        // Solo actuar si es MI turno
-        if (gameState.currentTurn === user.uid) {
+        if (isMyTurn) {
           handleTimeUp(gameState);
         }
       }
@@ -96,15 +155,11 @@ export default function GameScreen() {
     updateTimer();
     timerRef.current = setInterval(updateTimer, 500);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-    // gameState.timerStart y currentTurn son las únicas dependencias necesarias
-    // para reiniciar el timer cuando cambia el turno
-  }, [gameState?.timerStart, gameState?.currentTurn]);
+  }, [gameState?.timerStart, gameState?.currentTurn, gameState?.turboActive, gameState?.rivalTimerReduced]);
 
-  // handleTimeUp recibe gameState como parámetro para evitar closures viejas
   const handleTimeUp = async (state: GameState) => {
     if (!gameDoc || !user) return;
     const opponentId = gameDoc.player1 === user.uid ? gameDoc.player2 : gameDoc.player1;
-    // Pasar el turno sin corromper el tablero
     await skipTurn(gameId!, opponentId);
   };
 
@@ -112,7 +167,7 @@ export default function GameScreen() {
     newBoard: CellValue[],
     currentGameDoc: GameDoc,
   ) => {
-    if (finishingRoundRef.current) return; // evitar doble llamada
+    if (finishingRoundRef.current) return;
     finishingRoundRef.current = true;
 
     const winner = checkWinner(newBoard);
@@ -149,33 +204,75 @@ export default function GameScreen() {
     }
   }, [gameId, user?.uid]);
 
+  // ── Presionar celda del tablero ───────────────────────────────────────
   const handleCellPress = async (index: number) => {
     if (!gameDoc || !gameState || !user) return;
     if (gameState.currentTurn !== user.uid) return;
-    if (finishingRoundRef.current) return; // ronda ya resolviéndose
+    if (finishingRoundRef.current) return;
+
+    // ── Modo teletransporte activo ──
+    if (teleportMode) {
+      if (teleportFrom === null) {
+        // Primera selección: debe ser una ficha propia
+        if (gameState.board[index] === mySymbol) {
+          setTeleportFrom(index);
+        } else {
+          Alert.alert('Teletransporte 🌀', 'Toca una de TUS fichas para moverla');
+        }
+        return;
+      } else {
+        // Segunda selección: debe ser una celda vacía
+        if (gameState.board[index] !== '') {
+          Alert.alert('Teletransporte 🌀', 'Toca una celda VACÍA como destino');
+          return;
+        }
+        // Ejecutar el teleport
+        await applyTeleportMove(gameId!, gameState.board, teleportFrom, index, mySymbol);
+        setTeleportMode(false);
+        setTeleportFrom(null);
+        // El jugador aún tiene su turno para hacer el movimiento normal
+        return;
+      }
+    }
+
+    // ── Jugador congelado ──
     if (gameState.frozenPlayer === user.uid) {
       Alert.alert('Congelado ❄️', 'Pierdes este turno');
-      await skipTurn(gameId!, gameDoc.player1 === user.uid ? gameDoc.player2 : gameDoc.player1);
+      const opponentId = gameDoc.player1 === user.uid ? gameDoc.player2 : gameDoc.player1;
+      await skipTurn(gameId!, opponentId);
       return;
     }
 
     const opponentId = gameDoc.player1 === user.uid ? gameDoc.player2 : gameDoc.player1;
     await makeMove(gameId!, index, user.uid, mySymbol, gameState.board, opponentId, gameState.frozenPlayer);
 
-    // Calcular resultado con el board actualizado localmente
     const newBoard = [...gameState.board];
     newBoard[index] = mySymbol;
     await resolveRound(newBoard, gameDoc);
   };
 
+  // ── Usar comodín ──────────────────────────────────────────────────────
   const handleWildcard = async (wildcardId: string) => {
     if (!gameDoc || !gameState || !user) return;
-    const opponentId = gameDoc.player1 === user.uid ? gameDoc.player2 : gameDoc.player1;
+
+    // Escudo activo: el rival bloqueó el comodín
     if (shieldActive) {
-      Alert.alert('🛡️ Bloqueado', 'Tu comodín fue bloqueado por el rival');
+      Alert.alert('🛡️ Bloqueado', 'El rival activó un escudo. Tu comodín fue bloqueado.');
       return;
     }
-    await applyWildcard(gameId!, wildcardId, user.uid, opponentId, gameState.board, user.gems);
+
+    const opponentId = gameDoc.player1 === user.uid ? gameDoc.player2 : gameDoc.player1;
+
+    // Si el jugador activa teletransporte, entrar en modo selección local
+    if (wildcardId === 'teleport') {
+      await applyWildcard(gameId!, wildcardId, user.uid, opponentId, gameState.board, user.gems, mySymbol);
+      setTeleportMode(true);
+      setTeleportFrom(null);
+      Alert.alert('Teletransporte 🌀', 'Toca una de tus fichas para moverla, luego toca la celda destino');
+      return;
+    }
+
+    await applyWildcard(gameId!, wildcardId, user.uid, opponentId, gameState.board, user.gems, mySymbol);
   };
 
   const handleForfeit = () => {
@@ -253,6 +350,26 @@ export default function GameScreen() {
         />
       </View>
 
+      {/* Alerta de comodín del rival */}
+      {wildcardAlert && (
+        <View style={[styles.wildcardAlertBox, { borderColor: wildcardAlert.color }]}>
+          <Text style={[styles.wildcardAlertText, { color: wildcardAlert.color }]}>
+            {wildcardAlert.message}
+          </Text>
+        </View>
+      )}
+
+      {/* Indicador modo teletransporte */}
+      {teleportMode && (
+        <View style={styles.teleportBanner}>
+          <Text style={styles.teleportBannerText}>
+            {teleportFrom === null
+              ? '🌀 Toca una de tus fichas para moverla'
+              : '🌀 Ahora toca la celda destino (vacía)'}
+          </Text>
+        </View>
+      )}
+
       {/* Mensaje de ronda */}
       {roundMessage && (
         <View style={styles.roundMessage}>
@@ -270,6 +387,8 @@ export default function GameScreen() {
           confusionActive={isConfused}
           mySymbol={mySymbol}
           winningCells={[]}
+          teleportMode={teleportMode}
+          teleportFrom={teleportFrom}
         />
       </View>
 
@@ -314,7 +433,7 @@ const styles = StyleSheet.create({
   symbolLabel: { fontSize: 16, fontWeight: '900', marginTop: 2 },
   turnIndicator: { color: COLORS.primary, fontSize: 9, fontWeight: 'bold', marginTop: 2, letterSpacing: 0.5 },
   vs: { color: COLORS.textSecondary, fontSize: 18, fontWeight: 'bold', marginHorizontal: 8 },
-  timerContainer: { marginBottom: 16 },
+  timerContainer: { marginBottom: 8 },
   boardContainer: { alignItems: 'center', marginBottom: 16 },
   wildcardsContainer: { marginBottom: 12 },
   forfeitBtn: { alignSelf: 'center', padding: 8 },
@@ -328,5 +447,32 @@ const styles = StyleSheet.create({
     fontSize: 20, fontWeight: 'bold', padding: 16,
     borderRadius: 12, borderWidth: 1, borderColor: COLORS.primary,
     textAlign: 'center',
+  },
+  wildcardAlertBox: {
+    marginBottom: 8,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+  },
+  wildcardAlertText: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  teleportBanner: {
+    marginBottom: 8,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: '#00F5FF',
+    backgroundColor: 'rgba(0,245,255,0.08)',
+    alignItems: 'center',
+  },
+  teleportBannerText: {
+    color: '#00F5FF',
+    fontSize: 13,
+    fontWeight: 'bold',
   },
 });

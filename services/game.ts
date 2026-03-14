@@ -36,6 +36,8 @@ export interface GameState {
   blindTarget: string | null;
   confusionActive: boolean;
   confusionTarget: string | null;
+  teleportPending: boolean;
+  teleportPlayer: string | null;
 }
 
 export interface GameDoc {
@@ -119,6 +121,8 @@ export const createGame = async (
     blindTarget: null,
     confusionActive: false,
     confusionTarget: null,
+    teleportPending: false,
+    teleportPlayer: null,
   };
   await set(ref(rtdb, `games/${gameId}`), gameState);
 
@@ -141,6 +145,7 @@ export const makeMove = async (
   const newBoard = [...currentBoard];
   newBoard[cell] = symbol;
 
+  // Si el rival estaba congelado, el turno vuelve al jugador actual (no pasa al rival)
   const nextTurn = frozenPlayer === opponentId ? player : opponentId;
 
   await update(ref(rtdb, `games/${gameId}`), {
@@ -148,7 +153,22 @@ export const makeMove = async (
     currentTurn: nextTurn,
     timerStart: Date.now(),
     wildcardUsed: false,
+    // Limpiar todos los flags de comodines al cambiar de turno.
+    // frozenPlayer se preserva si el jugador actual estaba congelado
+    // (lo maneja handleCellPress antes de llegar aquí, pero por seguridad null)
     frozenPlayer: null,
+    // Efectos que duran 1 turno del afectado — se limpian al terminar ese turno
+    shieldActive: false,
+    shieldPlayer: null,
+    turboActive: false,
+    turboPlayer: null,
+    rivalTimerReduced: false,
+    blindActive: false,
+    blindTarget: null,
+    confusionActive: false,
+    confusionTarget: null,
+    teleportPending: false,
+    teleportPlayer: null,
     lastMove: { player, cell },
   });
 };
@@ -163,6 +183,18 @@ export const skipTurn = async (
     timerStart: Date.now(),
     wildcardUsed: false,
     frozenPlayer: null,
+    // Limpiar todos los flags de comodines al saltar turno
+    shieldActive: false,
+    shieldPlayer: null,
+    turboActive: false,
+    turboPlayer: null,
+    rivalTimerReduced: false,
+    blindActive: false,
+    blindTarget: null,
+    confusionActive: false,
+    confusionTarget: null,
+    teleportPending: false,
+    teleportPlayer: null,
   });
 };
 
@@ -222,6 +254,8 @@ export const finishRound = async (
       blindTarget: null,
       confusionActive: false,
       confusionTarget: null,
+      teleportPending: false,
+      teleportPlayer: null,
     };
     await update(ref(rtdb, `games/${gameId}`), resetState);
     await finishMatch(gameId, matchWinner, matchWinner === player1 ? player2 : player1);
@@ -248,6 +282,8 @@ export const finishRound = async (
       blindTarget: null,
       confusionActive: false,
       confusionTarget: null,
+      teleportPending: false,
+      teleportPlayer: null,
     };
     await update(ref(rtdb, `games/${gameId}`), resetState);
   }
