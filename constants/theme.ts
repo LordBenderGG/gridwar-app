@@ -1,19 +1,34 @@
 export const COLORS = {
-  background: '#0A0E1A',
-  surface: '#121829',
-  surfaceLight: '#1A2340',
-  primary: '#00F5FF',
-  secondary: '#FF6B35',
+  background: '#060A14',      // Negro profundo con tinte azul
+  surface: '#0D1526',         // Superficie oscura
+  surfaceLight: '#152035',    // Superficie clara
+  surfaceBright: '#1C2D4A',   // Superficie brillante para tarjetas activas
+  primary: '#00EEFF',         // Cyan eléctrico
+  primaryDark: '#00B8CC',     // Cyan oscuro
+  secondary: '#FF5722',       // Naranja fuego
+  secondaryGlow: '#FF7043',   // Naranja brillante
+  accent: '#FFD600',          // Amarillo neón
   text: '#FFFFFF',
-  textSecondary: '#B0BEC5',
-  danger: '#FF3B30',
-  success: '#34C759',
-  warning: '#FFD700',
-  purple: '#9B59B6',
-  border: '#2A3555',
-  overlay: 'rgba(0,0,0,0.7)',
-  X: '#00F5FF',
-  O: '#FF6B35',
+  textSecondary: '#8899BB',
+  textMuted: '#4A6080',
+  danger: '#FF1744',
+  dangerGlow: '#FF4569',
+  success: '#00E676',
+  warning: '#FFAB00',
+  purple: '#AA00FF',
+  purpleLight: '#CC33FF',
+  border: '#1E3050',
+  borderBright: '#2A4570',
+  overlay: 'rgba(0,0,0,0.85)',
+  X: '#00EEFF',
+  O: '#FF5722',
+
+  // Gradientes (definidos como arrays para LinearGradient)
+  gradientPrimary: ['#00EEFF', '#0066CC'] as const,
+  gradientFire: ['#FF5722', '#FF1744'] as const,
+  gradientGold: ['#FFD600', '#FF8F00'] as const,
+  gradientPurple: ['#AA00FF', '#6600CC'] as const,
+  gradientDark: ['#0D1526', '#060A14'] as const,
 };
 
 export const FONTS = {

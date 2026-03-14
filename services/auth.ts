@@ -13,6 +13,24 @@ import {
 import * as ImageManipulator from 'expo-image-manipulator';
 import { auth, db } from './firebase';
 
+// Tipos de comodines disponibles en el juego
+export type WildcardType =
+  | 'escudo'      // Bloquea el próximo movimiento del rival
+  | 'turbo'       // Turno doble (juegas dos veces seguidas)
+  | 'tiempo'      // Reduce el timer del rival a 10s
+  | 'ciego'       // Oculta el tablero al rival por 5s
+  | 'confusion'   // Invierte los controles del rival
+  | 'bomba';      // Elimina 2 celdas del rival del tablero
+
+export interface WildcardInventory {
+  escudo: number;
+  turbo: number;
+  tiempo: number;
+  ciego: number;
+  confusion: number;
+  bomba: number;
+}
+
 export interface UserProfile {
   uid: string;
   username: string;
@@ -31,7 +49,20 @@ export interface UserProfile {
   mode: 'global' | 'local';
   lang: string;
   createdAt: any;
+  // Inventario de comodines
+  wildcards: WildcardInventory;
 }
+
+// Puntos y comodines de bienvenida que recibe todo usuario nuevo
+export const WELCOME_POINTS = 100;
+export const WELCOME_WILDCARDS: WildcardInventory = {
+  escudo: 2,
+  turbo: 1,
+  tiempo: 1,
+  ciego: 1,
+  confusion: 1,
+  bomba: 0, // La bomba se compra en la tienda, no se regala
+};
 
 export const isUsernameTaken = async (username: string): Promise<boolean> => {
   const q = query(
@@ -63,7 +94,7 @@ export const registerUser = async (
     email,
     avatar,
     photoURL,
-    points: 0,
+    points: WELCOME_POINTS,
     gems: 0,
     rank: 'Novato',
     wins: 0,
@@ -75,6 +106,7 @@ export const registerUser = async (
     mode: 'global',
     lang: 'es',
     createdAt: serverTimestamp(),
+    wildcards: { ...WELCOME_WILDCARDS },
   };
 
   try {

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, Image, ScrollView,
-  TouchableOpacity, Alert, FlatList,
+  TouchableOpacity, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -9,7 +9,7 @@ import { collection, query, where, getDocs, orderBy, limit } from 'firebase/fire
 import { db } from '../../services/firebase';
 import { logoutUser, uploadProfilePhoto, updateUserProfile } from '../../services/auth';
 import { useAuthStore } from '../../store/authStore';
-import { getRankInfo } from '../../services/ranking';
+import { getRankInfo, RANKS } from '../../services/ranking';
 import { AVATARS } from '../../components/AvatarPicker';
 import { COLORS } from '../../constants/theme';
 
@@ -39,11 +39,11 @@ export default function PerfilScreen() {
         const snap = await getDocs(q);
         setHistory(snap.docs.map((d) => d.data() as HistoryItem));
       } catch {
-        // Sin historial todavía o fallo de red — no bloquea la pantalla
+        // Sin historial todavía
       }
     };
     fetchHistory();
-  }, [user]);
+  }, [user?.uid]);
 
   const handleLogout = async () => {
     Alert.alert('Cerrar sesión', '¿Seguro que quieres salir?', [
@@ -64,7 +64,7 @@ export default function PerfilScreen() {
     if (status !== 'granted') {
       Alert.alert(
         'Permiso denegado',
-        'Para cambiar tu foto necesitamos acceso a la galería. Ve a Ajustes > Permisos y activa el acceso a fotos.',
+        'Para cambiar tu foto necesitamos acceso a la galería.',
         [{ text: 'Entendido' }]
       );
       return;
@@ -74,7 +74,7 @@ export default function PerfilScreen() {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 1, // La optimización la hace uploadProfilePhoto con expo-image-manipulator
+        quality: 1,
       });
       if (!result.canceled) {
         const photoURL = await uploadProfilePhoto(user.uid, result.assets[0].uri);
@@ -96,62 +96,114 @@ export default function PerfilScreen() {
     ? Math.round((user.wins / user.gamesPlayed) * 100)
     : 0;
 
+  // Calcular progreso hacia el siguiente rango
+  const currentRankIndex = RANKS.findIndex((r) => r.name === user.rank);
+  const nextRank = currentRankIndex < RANKS.length - 1 ? RANKS[currentRankIndex + 1] : null;
+  const currentRankData = RANKS[currentRankIndex];
+  const progressPct = nextRank
+    ? Math.min(1, (user.points - currentRankData.min) / (nextRank.min - currentRankData.min))
+    : 1;
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* Fondo decorativo del hero */}
+      <View style={[styles.heroBg, { backgroundColor: rankInfo.color + '12' }]} />
+
       {/* Avatar */}
       <TouchableOpacity onPress={handleChangePhoto} style={styles.avatarContainer}>
-        <Image source={avatarSource} style={styles.avatar} />
-        <View style={styles.editBadge}><Text style={styles.editBadgeText}>📷</Text></View>
+        <View style={[styles.avatarRing, { borderColor: rankInfo.color }]}>
+          <Image source={avatarSource} style={styles.avatar} />
+        </View>
+        <View style={styles.editBadge}>
+          <Text style={styles.editBadgeText}>📷</Text>
+        </View>
       </TouchableOpacity>
 
+      {/* Nombre y rango */}
       <Text style={styles.username}>{user.username}</Text>
-      <Text style={[styles.rank, { color: rankInfo.color }]}>
-        {rankInfo.icon} {user.rank}
-      </Text>
+      <View style={styles.rankPill}>
+        <Text style={styles.rankPillIcon}>{rankInfo.icon}</Text>
+        <Text style={[styles.rankPillText, { color: rankInfo.color }]}>{user.rank}</Text>
+      </View>
 
-      {/* Stats */}
+      {/* Progreso de rango */}
+      {nextRank && (
+        <View style={styles.progressSection}>
+          <View style={styles.progressLabels}>
+            <Text style={styles.progressLabel}>{rankInfo.icon} {user.rank}</Text>
+            <Text style={styles.progressPoints}>{user.points} / {nextRank.min} pts</Text>
+            <Text style={styles.progressLabel}>{nextRank.icon} {nextRank.name}</Text>
+          </View>
+          <View style={styles.progressBar}>
+            <View style={[
+              styles.progressFill,
+              { width: `${progressPct * 100}%`, backgroundColor: rankInfo.color },
+            ]} />
+          </View>
+        </View>
+      )}
+
+      {/* Stats grid */}
       <View style={styles.statsGrid}>
         <View style={styles.statBox}>
-          <Text style={styles.statValue}>{user.points}</Text>
-          <Text style={styles.statLabel}>Puntos</Text>
+          <Text style={[styles.statValue, { color: COLORS.primary }]}>{user.points}</Text>
+          <Text style={styles.statLabel}>PUNTOS</Text>
         </View>
         <View style={styles.statBox}>
-          <Text style={[styles.statValue, { color: '#FFD700' }]}>{user.gems}</Text>
-          <Text style={styles.statLabel}>💎 Gemas</Text>
+          <Text style={[styles.statValue, { color: COLORS.accent }]}>{user.gems}</Text>
+          <Text style={styles.statLabel}>💎 GEMAS</Text>
         </View>
         <View style={styles.statBox}>
           <Text style={[styles.statValue, { color: COLORS.success }]}>{user.wins}</Text>
-          <Text style={styles.statLabel}>Victorias</Text>
+          <Text style={styles.statLabel}>VICTORIAS</Text>
         </View>
         <View style={styles.statBox}>
           <Text style={[styles.statValue, { color: COLORS.danger }]}>{user.losses}</Text>
-          <Text style={styles.statLabel}>Derrotas</Text>
+          <Text style={styles.statLabel}>DERROTAS</Text>
         </View>
         <View style={styles.statBox}>
           <Text style={styles.statValue}>{user.gamesPlayed}</Text>
-          <Text style={styles.statLabel}>Jugadas</Text>
+          <Text style={styles.statLabel}>PARTIDAS</Text>
         </View>
         <View style={styles.statBox}>
           <Text style={[styles.statValue, { color: COLORS.primary }]}>{winRate}%</Text>
-          <Text style={styles.statLabel}>Win Rate</Text>
+          <Text style={styles.statLabel}>WIN RATE</Text>
         </View>
       </View>
 
       {/* Historial */}
-      <Text style={styles.sectionTitle}>HISTORIAL</Text>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>HISTORIAL</Text>
+        <Text style={styles.sectionCount}>{history.length} partidas</Text>
+      </View>
+
       {history.length === 0 ? (
-        <Text style={styles.emptyHistory}>Aún no has jugado ninguna partida</Text>
+        <View style={styles.emptyHistory}>
+          <Text style={styles.emptyHistoryEmoji}>🎮</Text>
+          <Text style={styles.emptyHistoryText}>Aún no has jugado ninguna partida</Text>
+        </View>
       ) : (
         history.map((item) => (
-          <View key={item.gameId} style={[styles.historyItem, item.result === 'win' ? styles.winItem : styles.lossItem]}>
-            <Text style={[styles.resultBadge, item.result === 'win' ? styles.winBadge : styles.lossBadge]}>
-              {item.result === 'win' ? 'VICTORIA' : 'DERROTA'}
-            </Text>
+          <View
+            key={item.gameId}
+            style={[styles.historyItem, item.result === 'win' ? styles.winItem : styles.lossItem]}
+          >
+            <View style={[styles.resultBadge, item.result === 'win' ? styles.winBadge : styles.lossBadge]}>
+              <Text style={styles.resultBadgeText}>
+                {item.result === 'win' ? '✓ WIN' : '✗ LOSE'}
+              </Text>
+            </View>
             <View style={styles.historyInfo}>
               <Text style={styles.historyOpponent}>vs {item.opponentUsername}</Text>
               <Text style={styles.historyScore}>{item.score}</Text>
             </View>
-            <Text style={styles.historyType}>{item.type === 'global' ? '🌍' : item.type === 'tournament' ? '🏆' : '📡'}</Text>
+            <Text style={styles.historyTypeIcon}>
+              {item.type === 'global' ? '🌍' : item.type === 'tournament' ? '🏆' : '📡'}
+            </Text>
           </View>
         ))
       )}
@@ -165,57 +217,144 @@ export default function PerfilScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  content: { alignItems: 'center', padding: 20, paddingTop: 50, paddingBottom: 40 },
-  avatarContainer: { position: 'relative', marginBottom: 12 },
+  content: { alignItems: 'center', padding: 20, paddingTop: 50, paddingBottom: 48 },
+  heroBg: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 200,
+    borderBottomLeftRadius: 40,
+    borderBottomRightRadius: 40,
+  },
+  avatarContainer: { position: 'relative', marginBottom: 14 },
+  avatarRing: {
+    width: 108,
+    height: 108,
+    borderRadius: 54,
+    borderWidth: 3,
+    padding: 3,
+    backgroundColor: COLORS.background,
+  },
   avatar: {
-    width: 100, height: 100, borderRadius: 50,
-    borderWidth: 3, borderColor: COLORS.primary,
+    width: '100%',
+    height: '100%',
+    borderRadius: 50,
   },
   editBadge: {
-    position: 'absolute', bottom: 0, right: 0,
-    backgroundColor: COLORS.surface, borderRadius: 14,
-    width: 28, height: 28, justifyContent: 'center', alignItems: 'center',
-    borderWidth: 2, borderColor: COLORS.primary,
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.primary,
   },
-  editBadgeText: { fontSize: 14 },
-  username: { color: COLORS.text, fontSize: 24, fontWeight: 'bold', marginBottom: 4 },
-  rank: { fontSize: 16, fontWeight: '600', marginBottom: 20 },
+  editBadgeText: { fontSize: 16 },
+  username: { color: COLORS.text, fontSize: 26, fontWeight: '900', marginBottom: 6 },
+  rankPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 20,
+  },
+  rankPillIcon: { fontSize: 16 },
+  rankPillText: { fontSize: 14, fontWeight: '700' },
+  progressSection: { width: '100%', marginBottom: 24 },
+  progressLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  progressLabel: { color: COLORS.textSecondary, fontSize: 11 },
+  progressPoints: { color: COLORS.text, fontSize: 12, fontWeight: 'bold' },
+  progressBar: {
+    height: 8,
+    backgroundColor: COLORS.border,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressFill: { height: '100%', borderRadius: 4 },
   statsGrid: {
-    flexDirection: 'row', flexWrap: 'wrap',
-    justifyContent: 'center', gap: 10, width: '100%', marginBottom: 24,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    width: '100%',
+    marginBottom: 28,
   },
   statBox: {
-    backgroundColor: COLORS.surface, borderRadius: 12,
-    padding: 14, alignItems: 'center', width: '30%',
-    borderWidth: 1, borderColor: COLORS.border,
-  },
-  statValue: { color: COLORS.text, fontSize: 22, fontWeight: 'bold' },
-  statLabel: { color: COLORS.textSecondary, fontSize: 11, marginTop: 2 },
-  sectionTitle: {
-    color: COLORS.textSecondary, fontSize: 12, fontWeight: 'bold',
-    letterSpacing: 1, alignSelf: 'flex-start', marginBottom: 10, width: '100%',
-  },
-  emptyHistory: { color: COLORS.textSecondary, fontSize: 13, marginBottom: 20 },
-  historyItem: {
-    flexDirection: 'row', alignItems: 'center',
-    borderRadius: 10, padding: 10, marginBottom: 8, width: '100%',
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    padding: 14,
+    alignItems: 'center',
+    width: '30%',
     borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  winItem: { backgroundColor: 'rgba(52,199,89,0.08)', borderColor: COLORS.success },
-  lossItem: { backgroundColor: 'rgba(255,59,48,0.08)', borderColor: COLORS.danger },
+  statValue: { color: COLORS.text, fontSize: 22, fontWeight: '900' },
+  statLabel: { color: COLORS.textMuted, fontSize: 9, fontWeight: 'bold', letterSpacing: 1, marginTop: 3 },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    fontWeight: 'bold',
+    letterSpacing: 2,
+  },
+  sectionCount: { color: COLORS.textMuted, fontSize: 11 },
+  emptyHistory: { alignItems: 'center', paddingVertical: 24, gap: 8 },
+  emptyHistoryEmoji: { fontSize: 36 },
+  emptyHistoryText: { color: COLORS.textSecondary, fontSize: 13 },
+  historyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 8,
+    width: '100%',
+    borderWidth: 1,
+    gap: 10,
+  },
+  winItem: { backgroundColor: 'rgba(0,230,118,0.06)', borderColor: COLORS.success },
+  lossItem: { backgroundColor: 'rgba(255,23,68,0.06)', borderColor: COLORS.danger },
   resultBadge: {
-    fontSize: 10, fontWeight: 'bold',
-    paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginRight: 10,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    minWidth: 60,
+    alignItems: 'center',
   },
-  winBadge: { backgroundColor: COLORS.success, color: '#fff' },
-  lossBadge: { backgroundColor: COLORS.danger, color: '#fff' },
+  winBadge: { backgroundColor: COLORS.success },
+  lossBadge: { backgroundColor: COLORS.danger },
+  resultBadgeText: { color: '#fff', fontSize: 10, fontWeight: '900' },
   historyInfo: { flex: 1 },
   historyOpponent: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
-  historyScore: { color: COLORS.textSecondary, fontSize: 12 },
-  historyType: { fontSize: 18 },
+  historyScore: { color: COLORS.textSecondary, fontSize: 11, marginTop: 2 },
+  historyTypeIcon: { fontSize: 18 },
   logoutBtn: {
-    marginTop: 24, borderWidth: 1, borderColor: COLORS.danger,
-    borderRadius: 12, paddingVertical: 12, paddingHorizontal: 32,
+    marginTop: 24,
+    borderWidth: 1,
+    borderColor: COLORS.danger,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 40,
   },
   logoutText: { color: COLORS.danger, fontWeight: 'bold', fontSize: 15 },
 });

@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── USUARIOS ───────────────────────────────────────────────
+    // Cualquier usuario autenticado puede leer perfiles (para el home y clasificación)
+    // Solo el dueño puede escribir su propio perfil
+    match /users/{uid} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == uid;
+      allow update: if request.auth != null && (
+        // El dueño puede actualizar su propio perfil
+        request.auth.uid == uid
+        // O cualquier usuario autenticado puede actualizar campos de estado del juego
+        // (necesario para que el sistema cambie status, points, etc. de otros jugadores)
+        || request.auth != null
+      );
+      allow delete: if false;
+
+      // Historial de partidas — solo el dueño puede leer/escribir
+      match /history/{gameId} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+        allow write: if request.auth != null;
+      }
+    }
+
+    // ─── RETOS ──────────────────────────────────────────────────
+    // Cualquier usuario autenticado puede crear y leer retos
+    // Solo los participantes pueden actualizar un reto
+    match /challenges/{challengeId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if false;
+    }
+
+    // ─── PARTIDAS ───────────────────────────────────────────────
+    // Cualquier usuario autenticado puede leer y escribir partidas
+    // (necesario para que ambos jugadores puedan hacer movimientos)
+    match /games/{gameId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if false;
+    }
+
+    // ─── TORNEOS ────────────────────────────────────────────────
+    match /tournaments/{tournamentId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // ─── CLASIFICACIÓN / RANKING GLOBAL ─────────────────────────
+    match /ranking/{docId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+  }
+}

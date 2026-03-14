@@ -9,6 +9,7 @@ import { COLORS } from '../constants/theme';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { UserProfile } from '../services/auth';
+import { registerPresence } from '../services/presence';
 
 async function requestPushPermissions() {
   const { status } = await Notifications.requestPermissionsAsync();
@@ -19,6 +20,8 @@ async function requestPushPermissions() {
 export default function RootLayout() {
   const { setUser, setLoading } = useAuthStore();
   const profileUnsubRef = useRef<(() => void) | null>(null);
+  // Función de cleanup de presencia (marca offline al cerrar sesión o al desmontar)
+  const presenceCleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     requestPushPermissions();
@@ -29,8 +32,16 @@ export default function RootLayout() {
         profileUnsubRef.current();
         profileUnsubRef.current = null;
       }
+      // Limpiar presencia anterior si existía
+      if (presenceCleanupRef.current) {
+        presenceCleanupRef.current();
+        presenceCleanupRef.current = null;
+      }
 
       if (firebaseUser) {
+        // Registrar presencia online — onDisconnect de RTDB maneja el offline automáticamente
+        presenceCleanupRef.current = registerPresence(firebaseUser.uid);
+
         // Suscripción en tiempo real al perfil del usuario
         // Esto garantiza que user.status, points, rank, etc. siempre estén actualizados
         const profileUnsub = onSnapshot(
@@ -58,6 +69,7 @@ export default function RootLayout() {
     return () => {
       unsub();
       if (profileUnsubRef.current) profileUnsubRef.current();
+      if (presenceCleanupRef.current) presenceCleanupRef.current();
     };
   }, []);
 
@@ -80,6 +92,7 @@ export default function RootLayout() {
         <Stack.Screen name="tournament/index" options={{ headerShown: false }} />
         <Stack.Screen name="tournament/crear" options={{ headerShown: false }} />
         <Stack.Screen name="blocked" options={{ headerShown: false, animation: 'fade' }} />
+        <Stack.Screen name="onboarding" options={{ headerShown: false, animation: 'fade', gestureEnabled: false }} />
       </Stack>
     </>
   );

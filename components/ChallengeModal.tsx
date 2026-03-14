@@ -1,3 +1,16 @@
+/**
+ * ChallengeModal — notificación in-app emergente cuando alguien te reta.
+ *
+ * Aparece encima de cualquier pantalla de la app (Modal transparente),
+ * lo que lo hace funcionar como notificación in-app nativa cuando la app está abierta.
+ *
+ * Incluye:
+ * - Foto/avatar del retador
+ * - Nombre, rango y puntos del retador
+ * - Countdown real basado en expiresAt del servidor
+ * - Advertencia clara de consecuencias por no aceptar
+ * - Animación pulsante de urgencia
+ */
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
@@ -7,11 +20,14 @@ import {
   TouchableOpacity,
   Image,
   Animated as RNAnimated,
+  Dimensions,
 } from 'react-native';
 import { Challenge } from '../services/challenge';
 import { getRankInfo } from '../services/ranking';
 import { AVATARS } from './AvatarPicker';
 import { COLORS } from '../constants/theme';
+
+const { width } = Dimensions.get('window');
 
 interface ChallengeModalProps {
   challenge: Challenge | null;
@@ -29,22 +45,28 @@ const ChallengeModal: React.FC<ChallengeModalProps> = ({
   const [secondsLeft, setSecondsLeft] = useState(ACCEPT_TIMEOUT);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pulseAnim = useRef(new RNAnimated.Value(1)).current;
+  const shakeAnim = useRef(new RNAnimated.Value(0)).current;
+  const bgOpacity = useRef(new RNAnimated.Value(0)).current;
+  const slideAnim = useRef(new RNAnimated.Value(80)).current;
 
   useEffect(() => {
     if (!challenge) return;
-    setSecondsLeft(ACCEPT_TIMEOUT);
 
-    // Calcular cuánto tiempo queda realmente según expiresAt del servidor
+    // Calcular tiempo real restante
     const realSecondsLeft = Math.max(0, Math.floor((challenge.expiresAt - Date.now()) / 1000));
     setSecondsLeft(Math.min(realSecondsLeft, ACCEPT_TIMEOUT));
 
+    // Animación de entrada
+    RNAnimated.parallel([
+      RNAnimated.timing(bgOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+      RNAnimated.spring(slideAnim, { toValue: 0, tension: 60, friction: 10, useNativeDriver: true }),
+    ]).start();
+
+    // Timer countdown
     intervalRef.current = setInterval(() => {
       setSecondsLeft((prev) => {
         if (prev <= 1) {
           clearInterval(intervalRef.current!);
-          // Solo llamar onReject si el reto genuinamente no fue aceptado.
-          // El listener de Firestore en home.tsx ya maneja el expire;
-          // aquí solo cerramos el modal sin penalizar de nuevo.
           onReject();
           return 0;
         }
@@ -52,17 +74,33 @@ const ChallengeModal: React.FC<ChallengeModalProps> = ({
       });
     }, 1000);
 
+    // Pulsación constante
     RNAnimated.loop(
       RNAnimated.sequence([
-        RNAnimated.timing(pulseAnim, { toValue: 1.05, duration: 500, useNativeDriver: true }),
-        RNAnimated.timing(pulseAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
+        RNAnimated.timing(pulseAnim, { toValue: 1.04, duration: 600, useNativeDriver: true }),
+        RNAnimated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
       ])
     ).start();
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      bgOpacity.setValue(0);
+      slideAnim.setValue(80);
     };
-  }, [challenge]);
+  }, [challenge?.challengeId]);
+
+  // Shake cuando quedan ≤5 segundos
+  useEffect(() => {
+    if (secondsLeft <= 5 && secondsLeft > 0) {
+      RNAnimated.sequence([
+        RNAnimated.timing(shakeAnim, { toValue: 6, duration: 60, useNativeDriver: true }),
+        RNAnimated.timing(shakeAnim, { toValue: -6, duration: 60, useNativeDriver: true }),
+        RNAnimated.timing(shakeAnim, { toValue: 4, duration: 60, useNativeDriver: true }),
+        RNAnimated.timing(shakeAnim, { toValue: -4, duration: 60, useNativeDriver: true }),
+        RNAnimated.timing(shakeAnim, { toValue: 0, duration: 60, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [secondsLeft]);
 
   if (!challenge) return null;
 
@@ -72,38 +110,107 @@ const ChallengeModal: React.FC<ChallengeModalProps> = ({
     : AVATARS[challenge.fromAvatar] || AVATARS['avatar_1'];
 
   const urgency = secondsLeft <= 10;
+  const critical = secondsLeft <= 5;
+
+  // Color del countdown según urgencia
+  const countdownColor = critical ? '#FF1744' : urgency ? COLORS.warning : COLORS.success;
+
+  // Porcentaje del timer para la barra de progreso
+  const timerPercent = secondsLeft / ACCEPT_TIMEOUT;
 
   return (
-    <Modal transparent animationType="fade" visible={!!challenge}>
-      <View style={styles.overlay}>
-        <RNAnimated.View style={[styles.modal, { transform: [{ scale: pulseAnim }] }]}>
-          <Text style={styles.title}>⚔️ RETO ENTRANTE</Text>
+    <Modal transparent animationType="none" visible={!!challenge} statusBarTranslucent>
+      <RNAnimated.View style={[styles.overlay, { opacity: bgOpacity }]}>
+        <RNAnimated.View
+          style={[
+            styles.modalWrapper,
+            {
+              transform: [
+                { translateY: slideAnim },
+                { scale: pulseAnim },
+                { translateX: shakeAnim },
+              ],
+            },
+          ]}
+        >
+          {/* Borde superior de color del rango */}
+          <View style={[styles.rankAccent, { backgroundColor: rankInfo.color }]} />
 
-          <Image source={avatarSource} style={styles.avatar} />
-          <Text style={styles.username}>{challenge.fromUsername}</Text>
-          <Text style={[styles.rank, { color: rankInfo.color }]}>
-            {rankInfo.icon} {challenge.fromRank} · {challenge.fromPoints} pts
-          </Text>
+          <View style={styles.modal}>
+            {/* Header */}
+            <View style={styles.headerRow}>
+              <Text style={styles.incomingLabel}>⚔️ RETO ENTRANTE</Text>
+              <View style={[styles.countdownBubble, { borderColor: countdownColor }]}>
+                <Text style={[styles.countdownNumber, { color: countdownColor }]}>
+                  {secondsLeft}
+                </Text>
+                <Text style={[styles.countdownSec, { color: countdownColor }]}>s</Text>
+              </View>
+            </View>
 
-          <Text style={[styles.countdown, urgency && styles.countdownUrgent]}>
-            {secondsLeft}s
-          </Text>
-          <Text style={styles.countdownLabel}>para aceptar</Text>
+            {/* Barra de progreso del timer */}
+            <View style={styles.timerBarBg}>
+              <RNAnimated.View
+                style={[
+                  styles.timerBarFill,
+                  {
+                    width: `${timerPercent * 100}%`,
+                    backgroundColor: countdownColor,
+                  },
+                ]}
+              />
+            </View>
 
-          <View style={styles.buttons}>
-            <TouchableOpacity style={styles.rejectBtn} onPress={onReject}>
-              <Text style={styles.rejectText}>Rechazar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.acceptBtn} onPress={onAccept}>
-              <Text style={styles.acceptText}>✅ ACEPTAR</Text>
-            </TouchableOpacity>
+            {/* Info del retador */}
+            <View style={styles.challengerSection}>
+              <Image source={avatarSource} style={[styles.avatar, { borderColor: rankInfo.color }]} />
+              <View style={styles.challengerInfo}>
+                <Text style={styles.challengerUsername}>{challenge.fromUsername}</Text>
+                <View style={styles.rankRow}>
+                  <Text style={[styles.rankIcon]}>{rankInfo.icon}</Text>
+                  <Text style={[styles.rankText, { color: rankInfo.color }]}>
+                    {challenge.fromRank}
+                  </Text>
+                  <Text style={styles.pointsDot}>·</Text>
+                  <Text style={styles.pointsText}>{challenge.fromPoints} pts</Text>
+                </View>
+                <Text style={styles.challengeText}>¡Te ha retado a TIKTAK!</Text>
+              </View>
+            </View>
+
+            {/* Reglas del match */}
+            <View style={styles.rulesBox}>
+              <Text style={styles.rulesTitle}>📋 REGLAS DEL MATCH</Text>
+              <Text style={styles.rulesItem}>🎯 Best of 3 · Primero en ganar 2 rondas gana</Text>
+              <Text style={styles.rulesItem}>⏱ 30 segundos por turno</Text>
+              <Text style={styles.rulesItem}>💎 Comodines disponibles</Text>
+            </View>
+
+            {/* Advertencia */}
+            <View style={[styles.warningBox, critical && styles.warningBoxCritical]}>
+              <Text style={styles.warningIcon}>⚠️</Text>
+              <View style={styles.warningTextContainer}>
+                <Text style={styles.warningTitle}>Si no aceptas en tiempo:</Text>
+                <Text style={styles.warningItem}>• -50 puntos de tu rango</Text>
+                <Text style={styles.warningItem}>• 30 minutos bloqueado para retar</Text>
+              </View>
+            </View>
+
+            {/* Botones */}
+            <View style={styles.buttonsRow}>
+              <TouchableOpacity style={styles.rejectBtn} onPress={onReject}>
+                <Text style={styles.rejectIcon}>✕</Text>
+                <Text style={styles.rejectText}>Rechazar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.acceptBtn} onPress={onAccept}>
+                <Text style={styles.acceptIcon}>⚔️</Text>
+                <Text style={styles.acceptText}>ACEPTAR RETO</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-
-          <Text style={styles.warning}>
-            ⚠️ Si no aceptas: -50 pts y 30 min bloqueado
-          </Text>
         </RNAnimated.View>
-      </View>
+      </RNAnimated.View>
     </Modal>
   );
 };
@@ -111,86 +218,188 @@ const ChallengeModal: React.FC<ChallengeModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: COLORS.overlay,
+    backgroundColor: 'rgba(0,0,0,0.85)',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  modalWrapper: {
+    width: '100%',
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 20,
+  },
+  rankAccent: {
+    height: 4,
+    width: '100%',
   },
   modal: {
     backgroundColor: COLORS.surface,
-    borderRadius: 20,
-    padding: 28,
-    alignItems: 'center',
-    width: '85%',
-    borderWidth: 2,
-    borderColor: COLORS.primary,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderTopWidth: 0,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
-  title: {
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  incomingLabel: {
     color: COLORS.primary,
-    fontSize: 22,
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  countdownBubble: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    borderWidth: 2,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  countdownNumber: {
+    fontSize: 28,
+    fontWeight: '900',
+    lineHeight: 32,
+  },
+  countdownSec: {
+    fontSize: 14,
     fontWeight: 'bold',
+    marginLeft: 2,
+  },
+  timerBarBg: {
+    height: 4,
+    backgroundColor: COLORS.border,
+    borderRadius: 2,
     marginBottom: 16,
+    overflow: 'hidden',
+  },
+  timerBarFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  challengerSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
   },
   avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     borderWidth: 3,
-    borderColor: COLORS.primary,
-    marginBottom: 8,
+    marginRight: 14,
   },
-  username: {
+  challengerInfo: { flex: 1 },
+  challengerUsername: {
     color: COLORS.text,
     fontSize: 20,
-    fontWeight: 'bold',
-  },
-  rank: {
-    fontSize: 14,
-    marginBottom: 16,
-  },
-  countdown: {
-    color: COLORS.success,
-    fontSize: 56,
     fontWeight: '900',
+    marginBottom: 4,
   },
-  countdownUrgent: {
-    color: COLORS.danger,
-  },
-  countdownLabel: {
-    color: COLORS.textSecondary,
+  rankRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
+  rankIcon: { fontSize: 14 },
+  rankText: { fontSize: 13, fontWeight: 'bold' },
+  pointsDot: { color: COLORS.textSecondary, fontSize: 13 },
+  pointsText: { color: COLORS.textSecondary, fontSize: 13 },
+  challengeText: {
+    color: COLORS.primary,
     fontSize: 12,
-    marginBottom: 20,
+    fontStyle: 'italic',
   },
-  buttons: {
-    flexDirection: 'row',
-    gap: 12,
+  rulesBox: {
+    backgroundColor: 'rgba(0,245,255,0.05)',
+    borderRadius: 12,
+    padding: 12,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0,245,255,0.15)',
+  },
+  rulesTitle: {
+    color: COLORS.text,
+    fontSize: 11,
+    fontWeight: 'bold',
+    letterSpacing: 1,
+    marginBottom: 6,
+  },
+  rulesItem: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    marginBottom: 2,
+  },
+  warningBox: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,150,0,0.08)',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,150,0,0.25)',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  warningBoxCritical: {
+    backgroundColor: 'rgba(255,59,48,0.12)',
+    borderColor: COLORS.danger,
+  },
+  warningIcon: { fontSize: 16 },
+  warningTextContainer: { flex: 1 },
+  warningTitle: {
+    color: COLORS.warning,
+    fontSize: 11,
+    fontWeight: 'bold',
+    marginBottom: 3,
+  },
+  warningItem: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+  },
+  buttonsRow: {
+    flexDirection: 'row',
+    gap: 10,
   },
   rejectBtn: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 10,
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 14,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: COLORS.danger,
   },
+  rejectIcon: { fontSize: 14, color: COLORS.danger },
   rejectText: {
     color: COLORS.danger,
     fontWeight: 'bold',
+    fontSize: 14,
   },
   acceptBtn: {
+    flex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
     backgroundColor: COLORS.primary,
-    paddingHorizontal: 28,
-    paddingVertical: 12,
-    borderRadius: 10,
+    paddingVertical: 14,
+    borderRadius: 14,
   },
+  acceptIcon: { fontSize: 16 },
   acceptText: {
     color: COLORS.background,
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  warning: {
-    color: COLORS.textSecondary,
-    fontSize: 11,
-    textAlign: 'center',
+    fontWeight: '900',
+    fontSize: 15,
+    letterSpacing: 0.5,
   },
 });
 
