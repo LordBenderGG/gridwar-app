@@ -1062,7 +1062,7 @@ export default function TrainingScreen() {
           <Text style={styles.infoItem}>🤖  {t('training.rankAdapted')}</Text>
         </View>
 
-        <AdBanner style={{ marginBottom: 8 }} />
+        <AdBanner placement="training" style={{ marginBottom: 8 }} />
 
         <Text style={styles.diffSectionTitle}>{t('training.diffLabel').toUpperCase()}</Text>
 
@@ -1167,7 +1167,7 @@ export default function TrainingScreen() {
         {gs.isPlayerTurn ? t('training.yourTurn') : t('training.iaTurn')}
       </Text>
 
-      <AdBanner style={{ marginBottom: 8 }} />
+      <AdBanner placement="training" style={{ marginBottom: 8 }} />
 
       {/* Timer (only shown on player's turn) */}
       {gs.isPlayerTurn && (

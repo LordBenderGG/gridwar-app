@@ -567,7 +567,7 @@ export default function TorneoScreen() {
         </TouchableOpacity>
       </View>
 
-      <AdBanner style={{ marginBottom: 10 }} />
+      <AdBanner placement="tournaments" style={{ marginBottom: 10 }} />
 
       {inlineError && (
         <View style={styles.inlineErrorBox}>

@@ -205,7 +205,7 @@ export default function VsIAScreen() {
           {!playerWon && difficulty === 'hard' && (
             <Text style={styles.shame}>{t('training.shameHard')}</Text>
           )}
-          <AdBanner style={{ marginBottom: 16 }} />
+          <AdBanner placement="training" style={{ marginBottom: 16 }} />
           <TouchableOpacity style={styles.replayBtn} onPress={resetGame}>
             <Text style={styles.replayText}>{t('result.playAgain')}</Text>
           </TouchableOpacity>

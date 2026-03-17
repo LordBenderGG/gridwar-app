@@ -496,7 +496,7 @@ export default function HomeScreen() {
       )}
 
       {/* Banner AdMob */}
-      <AdBanner style={{ marginBottom: 8 }} />
+      <AdBanner placement="home" style={{ marginBottom: 8 }} />
 
       {/* Video recompensado */}
       <RewardedAdButton

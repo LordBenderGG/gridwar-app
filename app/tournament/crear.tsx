@@ -268,7 +268,7 @@ export default function CrearTorneoScreen() {
       </View>
 
       {/* Banner antes del botón crear */}
-      <AdBanner style={{ marginBottom: 8 }} />
+      <AdBanner placement="tournaments" style={{ marginBottom: 8 }} />
 
       {/* Botón crear */}
       <TouchableOpacity

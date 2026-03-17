@@ -795,7 +795,7 @@ export default function PerfilScreen() {
         </View>
       )}
 
-      <AdBanner style={{ marginBottom: 8 }} />
+      <AdBanner placement="profile" style={{ marginBottom: 8 }} />
 
       {/* Inventario de comodines */}
       <View style={styles.section}>

@@ -9,23 +9,38 @@ import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { BannerAd, BannerAdSize, TestIds } from 'react-native-google-mobile-ads';
 
-// ── IDs de anuncios ────────────────────────────────────────────────────────────
-// TEST: usa los IDs oficiales de Google para pruebas (no genera dinero real)
-// PRODUCCIÓN: reemplaza con tus IDs reales de AdMob
-// En esta version se usa SIEMPRE ID de prueba para evitar crashes por IDs invalidos.
-// Cuando compartas IDs reales, los cambiamos aqui.
-const BANNER_AD_UNIT_ID = TestIds.BANNER;
+type BannerPlacement =
+  | 'home'
+  | 'losers'
+  | 'profile'
+  | 'shop'
+  | 'tournaments'
+  | 'training'
+  | 'winners';
+
+const BANNER_IDS: Record<BannerPlacement, string> = {
+  home: 'ca-app-pub-9019813013540172/9580298199',
+  losers: 'ca-app-pub-9019813013540172/6678802682',
+  profile: 'ca-app-pub-9019813013540172/2717209664',
+  shop: 'ca-app-pub-9019813013540172/3718465992',
+  tournaments: 'ca-app-pub-9019813013540172/4528984786',
+  training: 'ca-app-pub-9019813013540172/4030291331',
+  winners: 'ca-app-pub-9019813013540172/8267216521',
+};
 
 interface AdBannerProps {
   size?: BannerAdSize;
   style?: object;
+  placement?: BannerPlacement;
 }
 
-export default function AdBanner({ size = BannerAdSize.BANNER, style }: AdBannerProps) {
+export default function AdBanner({ size = BannerAdSize.BANNER, style, placement = 'home' }: AdBannerProps) {
+  const unitId = __DEV__ ? TestIds.BANNER : BANNER_IDS[placement];
+
   return (
     <View style={[styles.container, style]}>
       <BannerAd
-        unitId={BANNER_AD_UNIT_ID}
+        unitId={unitId}
         size={size}
         requestOptions={{
           requestNonPersonalizedAdsOnly: false,

@@ -447,7 +447,7 @@ export default function TiendaScreen() {
           </View>
         </View>
 
-        <AdBanner style={{ marginBottom: 8 }} />
+        <AdBanner placement="shop" style={{ marginBottom: 8 }} />
 
         <Text style={styles.catTitle}>{t('shop.catPersonalization')}</Text>
         {PERSONALIZATION_ITEMS.map((item) => (

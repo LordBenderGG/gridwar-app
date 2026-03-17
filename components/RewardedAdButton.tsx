@@ -18,10 +18,8 @@ import { useAuthStore } from '../store/authStore';
 import { useColors } from '../hooks/useColors';
 import { addCreatorRoyaltySafe } from '../services/creator';
 
-// ── ID del anuncio recompensado ────────────────────────────────────────────────
-// En esta version se usa SIEMPRE ID de prueba para evitar crashes por IDs invalidos.
-// Cuando compartas IDs reales, los cambiamos aqui.
-const REWARDED_AD_UNIT_ID = TestIds.REWARDED;
+const REWARDED_MAIN_ID = 'ca-app-pub-9019813013540172/4052639348';
+const REWARDED_BACKUP_ID = 'ca-app-pub-9019813013540172/6954134858';
 
 const GEM_REWARD = 10; // gemas por ver un video completo
 
@@ -41,14 +39,17 @@ export default function RewardedAdButton({
   const [loading, setLoading] = useState(false);
   const [adReady, setAdReady] = useState(false);
   const [rewarded, setRewarded] = useState<RewardedAd | null>(null);
+  const [activeUnitId, setActiveUnitId] = useState<string>(
+    __DEV__ ? TestIds.REWARDED : REWARDED_MAIN_ID
+  );
 
   useEffect(() => {
-    loadAd();
-  }, []);
+    loadAd(activeUnitId);
+  }, [activeUnitId]);
 
-  const loadAd = () => {
+  const loadAd = (unitId: string) => {
     setAdReady(false);
-    const ad = RewardedAd.createForAdRequest(REWARDED_AD_UNIT_ID, {
+    const ad = RewardedAd.createForAdRequest(unitId, {
       requestNonPersonalizedAdsOnly: false,
     });
 
@@ -63,7 +64,13 @@ export default function RewardedAdButton({
 
     ad.addAdEventListener(AdEventType.CLOSED, () => {
       // Recargar para siguiente uso
-      loadAd();
+      loadAd(activeUnitId);
+    });
+
+    ad.addAdEventListener(AdEventType.ERROR, () => {
+      if (!__DEV__ && unitId === REWARDED_MAIN_ID) {
+        setActiveUnitId(REWARDED_BACKUP_ID);
+      }
     });
 
     ad.load();

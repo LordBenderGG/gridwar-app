@@ -209,7 +209,7 @@ export default function TorneosScreen() {
       </View>
 
       {/* Banner AdMob */}
-      <AdBanner style={{ marginBottom: 8 }} />
+      <AdBanner placement="tournaments" style={{ marginBottom: 8 }} />
 
       {/* Banner global activo */}
       {activeGlobalId ? (

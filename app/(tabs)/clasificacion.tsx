@@ -360,7 +360,7 @@ export default function ClasificacionScreen() {
                 <View style={styles.warningBox}>
                   <Text style={styles.warningText}>{t('shame.warning')}</Text>
                 </View>
-                <AdBanner style={{ marginTop: 10 }} />
+                <AdBanner placement="losers" style={{ marginTop: 10 }} />
               </View>
             </View>
           )}
@@ -387,7 +387,7 @@ export default function ClasificacionScreen() {
         <Text style={styles.headerTitle}>{t('ranking.headerTitle')}</Text>
         <Text style={styles.headerSub}>{t('ranking.headerSub')}</Text>
       </View>
-      <AdBanner style={{ marginBottom: 8 }} />
+      <AdBanner placement="winners" style={{ marginBottom: 8 }} />
       <View style={styles.tabBar}>
         <TouchableOpacity
           style={[styles.tabBtn, seasonTab === 'current' && styles.tabBtnActive]}
