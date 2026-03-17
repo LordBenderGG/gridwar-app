@@ -1,63 +1,32 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { WILDCARDS, Wildcard } from '../services/wildcards';
-import { COLORS } from '../constants/theme';
+import { WildcardInventory } from '../services/auth';
+import { useColors } from '../hooks/useColors';
+import '../i18n';
+
+/** Maps wildcard service IDs to their i18n key prefix in the wildcards namespace */
+const WC_I18N_KEY: Record<string, string> = {
+  turbo:       'turbo',
+  time_reduce: 'tiempo',
+  teleport:    'teleport',
+  shield:      'shield',
+  confusion:   'confusion',
+  sabotage:    'sabotaje',
+  freeze:      'freeze',
+  earthquake:  'earthquake',
+};
 
 interface WildcardBarProps {
-  playerGems: number;
+  wildcards: Partial<WildcardInventory>;
   wildcardUsed: boolean;
   isMyTurn: boolean;
   shieldActive: boolean;
   onUseWildcard: (wildcardId: string) => void;
 }
 
-const WildcardBar: React.FC<WildcardBarProps> = ({
-  playerGems,
-  wildcardUsed,
-  isMyTurn,
-  shieldActive,
-  onUseWildcard,
-}) => {
-  const canUse = (w: Wildcard) =>
-    isMyTurn && !wildcardUsed && playerGems >= w.cost && !shieldActive;
-
-  return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>COMODINES</Text>
-        <Text style={styles.gems}>💎 {playerGems}</Text>
-      </View>
-      {shieldActive && (
-        <Text style={styles.shieldWarning}>🛡️ Tu comodín fue bloqueado</Text>
-      )}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        {WILDCARDS.map((w) => {
-          const available = canUse(w);
-          return (
-            <TouchableOpacity
-              key={w.id}
-              style={[
-                styles.card,
-                { borderColor: w.color },
-                !available && styles.cardDisabled,
-              ]}
-              onPress={() => onUseWildcard(w.id)}
-              disabled={!available}
-            >
-              <Text style={styles.icon}>{w.icon}</Text>
-              <Text style={[styles.cardName, { color: w.color }]} numberOfLines={1}>
-                {w.name}
-              </Text>
-              <Text style={styles.cost}>💎 {w.cost}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-    </View>
-  );
-};
-
-const styles = StyleSheet.create({
+const createStyles = (COLORS: any) => StyleSheet.create({
   container: {
     backgroundColor: COLORS.surface,
     borderRadius: 12,
@@ -75,11 +44,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
     letterSpacing: 1,
-  },
-  gems: {
-    color: COLORS.primary,
-    fontSize: 14,
-    fontWeight: 'bold',
   },
   shieldWarning: {
     color: COLORS.success,
@@ -107,12 +71,80 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: 'bold',
     textAlign: 'center',
-    marginBottom: 2,
+    marginBottom: 4,
   },
-  cost: {
-    color: COLORS.textSecondary,
+  countBadge: {
+    backgroundColor: COLORS.border,
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  countText: {
+    color: COLORS.text,
     fontSize: 10,
+    fontWeight: 'bold',
+  },
+  countZero: {
+    color: COLORS.textMuted,
   },
 });
+
+const WildcardBar: React.FC<WildcardBarProps> = ({
+  wildcards,
+  wildcardUsed,
+  isMyTurn,
+  shieldActive,
+  onUseWildcard,
+}) => {
+  const { t } = useTranslation();
+  const COLORS = useColors();
+  const styles = useMemo(() => createStyles(COLORS), [COLORS]);
+
+  const getCount = (id: string): number =>
+    (wildcards as Record<string, number>)[id] ?? 0;
+
+  const canUse = (w: Wildcard) =>
+    isMyTurn && !wildcardUsed && getCount(w.id) > 0 && !shieldActive;
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>{t('wildcards.title').toUpperCase()}</Text>
+      </View>
+      {shieldActive && (
+        <Text style={styles.shieldWarning}>🛡️ {t('wildcards.shieldRival')}</Text>
+      )}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        {WILDCARDS.map((w) => {
+          const available = canUse(w);
+          const count = getCount(w.id);
+          const keyPrefix = WC_I18N_KEY[w.id] ?? w.id;
+          return (
+            <TouchableOpacity
+              key={w.id}
+              style={[
+                styles.card,
+                { borderColor: w.color },
+                !available && styles.cardDisabled,
+              ]}
+              onPress={() => onUseWildcard(w.id)}
+              disabled={!available}
+            >
+              <Text style={styles.icon}>{w.icon}</Text>
+              <Text style={[styles.cardName, { color: w.color }]} numberOfLines={1}>
+                {t(`wildcards.${keyPrefix}Name`)}
+              </Text>
+              <View style={styles.countBadge}>
+                <Text style={[styles.countText, count === 0 && styles.countZero]}>
+                  x{count}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+};
 
 export default WildcardBar;

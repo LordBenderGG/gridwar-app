@@ -434,8 +434,7 @@ export default function TiendaScreen() {
     }
   };
 
-  const [localGems, setLocalGems] = useState<number | null>(null);
-  const gems = localGems ?? user?.gems ?? 0;
+  const gems = user?.gems ?? 0;
   const inv = (user?.inventory as any) || {};
 
   return (
@@ -488,11 +487,7 @@ export default function TiendaScreen() {
         <Text style={styles.catTitle}>VIDEOS</Text>
         <RewardedAdButton
           label="▶ Ver video y ganar 15 💎 GRATIS"
-          onRewarded={() => {
-            const newGems = gems + 15;
-            setLocalGems(newGems);
-            if (user) updateUser({ gems: newGems });
-          }}
+          gemAmount={15}
         />
       </ScrollView>
 

@@ -1,9 +1,37 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity, Animated as RNAnimated } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { UserProfile } from '../services/auth';
-import { getRankInfo } from '../services/ranking';
-import { COLORS } from '../constants/theme';
+import { getRankInfo, getTranslatedRankName } from '../services/ranking';
+import { useColors } from '../hooks/useColors';
 import { AVATARS } from './AvatarPicker';
+import '../i18n';
+
+// ─── Helpers de personalización ───────────────────────────────────────────────
+const FRAME_COLORS: Record<string, string> = {
+  frame_gold: '#FFD700',
+  frame_neon:  '#00F5FF',
+  frame_fire:  '#FF6B35',
+};
+
+const NAME_COLORS: Record<string, string> = {
+  color_gold:   '#FFD700',
+  color_cyan:   '#00F5FF',
+  color_pink:   '#FF69B4',
+  color_red:    '#FF1744',
+  color_purple: '#9B59B6',
+};
+
+export const resolveFrameColor = (frameId?: string | null, fallback?: string): string => {
+  if (frameId && FRAME_COLORS[frameId]) return FRAME_COLORS[frameId];
+  // fallback will use COLORS.border from the caller if not provided
+  return fallback || '#333';
+};
+
+export const resolveNameColor = (colorId?: string | null): string => {
+  if (colorId && NAME_COLORS[colorId]) return NAME_COLORS[colorId];
+  return '#FFFFFF'; // default text color fallback
+};
 
 interface PlayerCardProps {
   player: UserProfile;
@@ -11,112 +39,12 @@ interface PlayerCardProps {
   challengeDisabled?: boolean;
   compact?: boolean;
   isOnline?: boolean;
+  // Override de personalización (para mostrar stats de otro jugador)
+  frameId?: string | null;
+  nameColorId?: string | null;
 }
 
-const PlayerCard: React.FC<PlayerCardProps> = ({
-  player,
-  onChallenge,
-  challengeDisabled,
-  compact = false,
-  isOnline = true,
-}) => {
-  const rankInfo = getRankInfo(player.rank);
-  const avatarSource = player.photoURL
-    ? { uri: player.photoURL }
-    : AVATARS[player.avatar] || AVATARS['avatar_1'];
-
-  const statusConfig = {
-    available:  { color: COLORS.success,  label: 'Disponible', dot: '●' },
-    in_game:    { color: COLORS.warning,  label: 'En partida', dot: '●' },
-    challenged: { color: COLORS.secondary, label: 'Ocupado',   dot: '●' },
-    blocked:    { color: COLORS.danger,   label: 'Bloqueado',  dot: '●' },
-  }[player.status] || { color: COLORS.textMuted, label: 'Offline', dot: '●' };
-
-  if (compact) {
-    return (
-      <View style={styles.compactContainer}>
-        <Image source={avatarSource} style={styles.compactAvatar} />
-        <View style={styles.compactInfo}>
-          <Text style={styles.username}>{player.username}</Text>
-          <Text style={[styles.rank, { color: rankInfo.color }]}>
-            {rankInfo.icon} {player.rank}
-          </Text>
-        </View>
-        <Text style={styles.points}>{player.points} pts</Text>
-      </View>
-    );
-  }
-
-  const canBeChalleng = player.status === 'available' && !challengeDisabled;
-
-  return (
-    <View style={[
-      styles.container,
-      canBeChalleng && styles.containerAvailable,
-    ]}>
-      {/* Left: Avatar + online dot */}
-      <View style={styles.avatarWrapper}>
-        <Image source={avatarSource} style={[styles.avatar, { borderColor: rankInfo.color }]} />
-        <View style={[styles.onlineDot, { backgroundColor: statusConfig.color }]} />
-      </View>
-
-      {/* Middle: Info */}
-      <View style={styles.info}>
-        <View style={styles.usernameRow}>
-          <Text style={styles.username}>{player.username}</Text>
-          {player.wins >= 10 && (
-            <View style={styles.hotBadge}>
-              <Text style={styles.hotBadgeText}>🔥 HOT</Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.rankRow}>
-          <Text style={styles.rankIcon}>{rankInfo.icon}</Text>
-          <Text style={[styles.rank, { color: rankInfo.color }]}>{player.rank}</Text>
-          <Text style={styles.separator}>·</Text>
-          <Text style={styles.points}>{player.points} pts</Text>
-        </View>
-        <View style={styles.statusRow}>
-          <Text style={[styles.statusDot, { color: statusConfig.color }]}>
-            {statusConfig.dot}
-          </Text>
-          <Text style={[styles.statusLabel, { color: statusConfig.color }]}>
-            {statusConfig.label}
-          </Text>
-          <Text style={styles.gems}>· {player.gems} 💎</Text>
-        </View>
-      </View>
-
-      {/* Right: Challenge button */}
-      {onChallenge && (
-        <TouchableOpacity
-          style={[
-            styles.challengeBtn,
-            challengeDisabled ? styles.challengeBtnDisabled : styles.challengeBtnActive,
-          ]}
-          onPress={onChallenge}
-          disabled={challengeDisabled}
-          activeOpacity={0.75}
-        >
-          <Text style={[
-            styles.challengeIcon,
-            challengeDisabled && styles.challengeIconDisabled,
-          ]}>
-            {challengeDisabled ? '🔒' : '⚔️'}
-          </Text>
-          <Text style={[
-            styles.challengeBtnText,
-            challengeDisabled && styles.challengeBtnTextDisabled,
-          ]}>
-            RETAR
-          </Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-};
-
-const styles = StyleSheet.create({
+const createStyles = (COLORS: any) => StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -135,11 +63,19 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginRight: 12,
   },
+  avatarRing: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 2.5,
+    padding: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    borderWidth: 2,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
   onlineDot: {
     position: 'absolute',
@@ -159,7 +95,6 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   username: {
-    color: COLORS.text,
     fontSize: 15,
     fontWeight: '800',
   },
@@ -172,6 +107,24 @@ const styles = StyleSheet.create({
     borderColor: COLORS.secondary,
   },
   hotBadgeText: { color: COLORS.secondary, fontSize: 9, fontWeight: 'bold' },
+  tournamentBadge: {
+    backgroundColor: 'rgba(255,214,0,0.15)',
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderWidth: 1,
+    borderColor: '#FFD700',
+  },
+  tournamentBadgeText: { color: '#FFD700', fontSize: 9, fontWeight: 'bold' },
+  levelBadge: {
+    backgroundColor: 'rgba(170,0,255,0.15)',
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderWidth: 1,
+    borderColor: COLORS.purple,
+  },
+  levelBadgeText: { color: COLORS.purpleLight, fontSize: 9, fontWeight: 'bold' },
   rankRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -221,13 +174,154 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 8,
   },
-  compactAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  compactAvatarRing: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 2,
+    padding: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginRight: 8,
+  },
+  compactAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
   },
   compactInfo: { flex: 1 },
 });
+
+const PlayerCard: React.FC<PlayerCardProps> = ({
+  player,
+  onChallenge,
+  challengeDisabled,
+  compact = false,
+  isOnline = true,
+  frameId,
+  nameColorId,
+}) => {
+  const { t } = useTranslation();
+  const COLORS = useColors();
+  const styles = useMemo(() => createStyles(COLORS), [COLORS]);
+  const rankInfo = getRankInfo(player.rank);
+  const avatarSource = player.photoURL
+    ? { uri: player.photoURL }
+    : AVATARS[player.avatar] || AVATARS['avatar_1'];
+
+  // Personalización — si no se pasa explícitamente, leer del inventario del jugador
+  const inv = (player as any).inventory || {};
+  const effectiveFrameId = frameId !== undefined ? frameId : (inv.active_frame ?? null);
+  const effectiveNameColorId = nameColorId !== undefined ? nameColorId : (inv.active_name_color ?? null);
+
+  const frameColor = resolveFrameColor(effectiveFrameId, rankInfo.color);
+  const nameColor = resolveNameColor(effectiveNameColorId) !== '#FFFFFF'
+    ? resolveNameColor(effectiveNameColorId)
+    : COLORS.text;
+
+  const statusConfig = {
+    available:  { color: COLORS.success,  label: t('home.online'),     dot: '●' },
+    in_game:    { color: COLORS.warning,  label: t('home.inGame'),     dot: '●' },
+    challenged: { color: COLORS.secondary, label: t('home.challenged'), dot: '●' },
+    blocked:    { color: COLORS.danger,   label: t('home.blocked'),    dot: '●' },
+  }[player.status] || { color: COLORS.textMuted, label: 'Offline', dot: '●' };
+
+  if (compact) {
+    return (
+      <View style={styles.compactContainer}>
+        <View style={[styles.compactAvatarRing, { borderColor: frameColor }]}>
+          <Image source={avatarSource} style={styles.compactAvatar} />
+        </View>
+        <View style={styles.compactInfo}>
+          <Text style={[styles.username, { color: nameColor }]}>{player.username}</Text>
+          <Text style={[styles.rank, { color: rankInfo.color }]}>
+            {rankInfo.icon} {getTranslatedRankName(player.rank)}
+          </Text>
+        </View>
+        <Text style={styles.points}>{player.points} pts</Text>
+      </View>
+    );
+  }
+
+  const canBeChalleng = player.status === 'available' && !challengeDisabled;
+
+  return (
+    <View style={[
+      styles.container,
+      canBeChalleng && styles.containerAvailable,
+    ]}>
+      {/* Left: Avatar + frame + online dot */}
+      <View style={styles.avatarWrapper}>
+        <View style={[styles.avatarRing, { borderColor: frameColor }]}>
+          <Image source={avatarSource} style={styles.avatar} />
+        </View>
+        <View style={[styles.onlineDot, { backgroundColor: statusConfig.color }]} />
+      </View>
+
+      {/* Middle: Info */}
+      <View style={styles.info}>
+        <View style={styles.usernameRow}>
+          <Text style={[styles.username, { color: nameColor }]}>{player.username}</Text>
+          {(player as any).tournamentsWon > 0 && (
+            <View style={styles.tournamentBadge}>
+              <Text style={styles.tournamentBadgeText}>🏆×{(player as any).tournamentsWon}</Text>
+            </View>
+          )}
+          {(player as any).level > 1 && (
+            <View style={styles.levelBadge}>
+              <Text style={styles.levelBadgeText}>Nv.{(player as any).level}</Text>
+            </View>
+          )}
+          {player.wins >= 10 && (
+            <View style={styles.hotBadge}>
+              <Text style={styles.hotBadgeText}>🔥 HOT</Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.rankRow}>
+          <Text style={styles.rankIcon}>{rankInfo.icon}</Text>
+          <Text style={[styles.rank, { color: rankInfo.color }]}>{getTranslatedRankName(player.rank)}</Text>
+          <Text style={styles.separator}>·</Text>
+          <Text style={styles.points}>{player.points} pts</Text>
+        </View>
+        <View style={styles.statusRow}>
+          <Text style={[styles.statusDot, { color: statusConfig.color }]}>
+            {statusConfig.dot}
+          </Text>
+          <Text style={[styles.statusLabel, { color: statusConfig.color }]}>
+            {statusConfig.label}
+          </Text>
+          <Text style={styles.gems}>· {player.gems} 💎</Text>
+        </View>
+      </View>
+
+      {/* Right: Challenge button */}
+      {onChallenge && (
+        <TouchableOpacity
+          style={[
+            styles.challengeBtn,
+            challengeDisabled ? styles.challengeBtnDisabled : styles.challengeBtnActive,
+          ]}
+          onPress={onChallenge}
+          disabled={challengeDisabled}
+          activeOpacity={0.75}
+        >
+          <Text style={[
+            styles.challengeIcon,
+            challengeDisabled && styles.challengeIconDisabled,
+          ]}>
+            {challengeDisabled ? '🔒' : '⚔️'}
+          </Text>
+          <Text style={[
+            styles.challengeBtnText,
+            challengeDisabled && styles.challengeBtnTextDisabled,
+          ]}>
+            {t('home.challenge')}
+          </Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+};
 
 export default PlayerCard;

@@ -14,7 +14,7 @@ import {
   runTransaction,
   increment,
 } from 'firebase/firestore';
-import { ref, set, onValue, update, get } from 'firebase/database';
+import { ref, set, onValue, update, get, runTransaction as runRTDBTransaction } from 'firebase/database';
 import { db, rtdb } from './firebase';
 import { calculateRank } from './ranking';
 import { POINTS_WIN, POINTS_LOSS, XP_WIN, XP_LOSS, calculateLevel } from '../constants/theme';
@@ -37,6 +37,7 @@ export interface GameState {
   turboActive: boolean;
   turboPlayer: string | null;
   rivalTimerReduced: boolean;
+  rivalTimerReducedTarget: string | null;
   earthquakeActive: boolean;
   earthquakeTarget: string | null;
   confusionActive: boolean;
@@ -106,6 +107,10 @@ export const createGame = async (
   player1NameColor: string | null = null,
   player2NameColor: string | null = null
 ): Promise<void> => {
+  if (!player1 || !player2) {
+    throw new Error('INVALID_GAME_PLAYERS');
+  }
+
   const gameDoc: GameDoc = {
     gameId,
     player1,
@@ -143,6 +148,7 @@ export const createGame = async (
     turboActive: false,
     turboPlayer: null,
     rivalTimerReduced: false,
+    rivalTimerReducedTarget: null,
     earthquakeActive: false,
     earthquakeTarget: null,
     confusionActive: false,
@@ -154,127 +160,138 @@ export const createGame = async (
   };
   await set(ref(rtdb, `games/${gameId}`), gameState);
 
-  await updateDoc(doc(db, 'users', player1), { status: 'in_game' });
-  await updateDoc(doc(db, 'users', player2), { status: 'in_game' });
+  await updateDoc(doc(db, 'users', player1), { status: 'in_game' }).catch(() => {});
+  await updateDoc(doc(db, 'users', player2), { status: 'in_game' }).catch(() => {});
 };
 
 export const makeMove = async (
   gameId: string,
   cell: number,
-  player: string,
-  symbol: 'X' | 'O',
-  currentBoard: CellValue[],
-  opponentId: string,
-  currentState: GameState
-): Promise<void> => {
-  if (cell < 0 || cell > 8) return; // ignorar celdas inválidas
-  if (currentBoard[cell] !== '') return;
+  requesterUid: string,
+  player1: string,
+  player2: string
+): Promise<{ ok: true; board: CellValue[] } | { ok: false; reason: string }> => {
+  if (cell < 0 || cell > 8) return { ok: false, reason: 'invalid_cell' };
+  if (!requesterUid) return { ok: false, reason: 'missing_requester' };
+  try {
+    const gameRef = ref(rtdb, `games/${gameId}`);
+    const tx = await runRTDBTransaction(gameRef, (liveRaw: any) => {
+      if (!liveRaw) return;
+      const live = liveRaw as GameState;
 
-  const newBoard = [...currentBoard];
-  newBoard[cell] = symbol;
+      if (!Array.isArray(live.board)) return;
+      const actingPlayer = live.currentTurn;
+      if (!actingPlayer) return;
+      if (actingPlayer !== player1 && actingPlayer !== player2) return;
+      if (actingPlayer !== requesterUid) return;
 
-  // Si el rival estaba congelado, el turno vuelve al jugador actual (no pasa al rival)
-  const nextTurn = currentState.frozenPlayer === opponentId ? player : opponentId;
+      const symbol: 'X' | 'O' = actingPlayer === player1 ? 'X' : 'O';
+      const opponentId = actingPlayer === player1 ? player2 : player1;
+      const board = [...live.board];
+      if (board[cell] !== '') return;
+      const frozenPlayer = live.frozenPlayer ?? null;
 
-  // Regla: cada flag se limpia cuando el AFECTADO termina su turno.
-  // El jugador 'player' acaba de terminar su turno, así que limpiamos
-  // los flags que lo afectaban A ÉL. Los flags que afectan al RIVAL
-  // se preservan para que los experimente en su turno.
+      board[cell] = symbol;
+      const nextTurn = frozenPlayer === opponentId ? actingPlayer : opponentId;
 
-  const updates: Record<string, any> = {
-    board: newBoard,
-    currentTurn: nextTurn,
-    timerStart: Date.now(),
-    wildcardUsed: false,
-    frozenPlayer: null,
-    lastMove: { player, cell },
-    // Turbo: solo afecta al jugador actual, limpiar siempre
-    turboActive: false,
-    turboPlayer: null,
-    // Teleport: ya fue ejecutado o cancelado, limpiar siempre
-    teleportPending: false,
-    teleportPlayer: null,
-  };
+      const next: any = {
+        ...liveRaw,
+        board,
+        currentTurn: nextTurn,
+        timerStart: Date.now(),
+        wildcardUsed: false,
+        frozenPlayer: frozenPlayer === actingPlayer ? null : frozenPlayer,
+        lastMove: { player: actingPlayer, cell },
+        turboActive: false,
+        turboPlayer: null,
+        teleportPending: false,
+        teleportPlayer: null,
+      };
 
-  // earthquakeActive: afecta al jugador actual — limpiar solo si era su turno el afectado
-  if (currentState.earthquakeActive && currentState.earthquakeTarget === player) {
-    updates['earthquakeActive'] = false;
-    updates['earthquakeTarget'] = null;
+      if (live.earthquakeActive && live.earthquakeTarget === actingPlayer) {
+        next.earthquakeActive = false;
+        next.earthquakeTarget = null;
+      }
+      if (live.confusionActive && live.confusionTarget === actingPlayer) {
+        next.confusionActive = false;
+        next.confusionTarget = null;
+      }
+      if (live.rivalTimerReduced && live.rivalTimerReducedTarget === actingPlayer) {
+        next.rivalTimerReduced = false;
+        next.rivalTimerReducedTarget = null;
+      }
+      if (live.shieldActive && live.shieldPlayer !== actingPlayer) {
+        next.shieldActive = false;
+        next.shieldPlayer = null;
+      }
+
+      return next;
+    });
+
+    const after = tx.snapshot.val() as GameState | null;
+    if (!tx.committed) {
+      if (!after) return { ok: false, reason: 'missing_game_state' };
+      if (!Array.isArray(after.board)) return { ok: false, reason: 'invalid_live_board' };
+      if (after.board[cell] !== '') return { ok: false, reason: 'cell_busy' };
+      if (!after.currentTurn) return { ok: false, reason: 'missing_turn' };
+      if (after.currentTurn !== requesterUid) return { ok: false, reason: 'not_your_turn' };
+      return { ok: false, reason: 'tx_not_committed' };
+    }
+    if (!after?.lastMove || after.lastMove.cell !== cell) {
+      return { ok: false, reason: 'postcheck_failed' };
+    }
+    return { ok: true, board: after.board };
+  } catch (e: any) {
+    return { ok: false, reason: `exception:${String(e?.message || e || 'unknown')}` };
   }
-
-  // confusionActive: afecta al jugador actual — limpiar solo si era su turno el afectado
-  if (currentState.confusionActive && currentState.confusionTarget === player) {
-    updates['confusionActive'] = false;
-    updates['confusionTarget'] = null;
-  }
-
-  // rivalTimerReduced: afecta al jugador actual (redujo su tiempo) — limpiar al terminar su turno
-  if (currentState.rivalTimerReduced) {
-    updates['rivalTimerReduced'] = false;
-  }
-
-  // shieldActive: afecta al rival (bloquea su comodín) — limpiar cuando el RIVAL termina su turno
-  // es decir, solo limpiar si el que acaba de mover es el shieldPlayer (el que activó el escudo)
-  // El escudo protege al shieldPlayer de comodines del rival.
-  // Se limpia cuando el rival (opponentId) termina su turno, no cuando shieldPlayer termina.
-  // Como 'player' acaba de terminar, limpiar escudo solo si player === opponentId respecto al escudo.
-  // Simplificado: el escudo dura 1 turno completo del rival. Se limpia cuando el rival mueve.
-  if (currentState.shieldActive && currentState.shieldPlayer !== player) {
-    // El que acaba de mover es el rival (el bloqueado por el escudo) — limpiar
-    updates['shieldActive'] = false;
-    updates['shieldPlayer'] = null;
-  }
-
-  await update(ref(rtdb, `games/${gameId}`), updates);
 };
 
 // Pasa el turno sin hacer movimiento (cuando se agota el tiempo o freeze)
 export const skipTurn = async (
   gameId: string,
   opponentId: string,
-  currentState?: GameState,
+  _currentState?: GameState,
   skippedPlayer?: string
 ): Promise<void> => {
-  const updates: Record<string, any> = {
-    currentTurn: opponentId,
-    timerStart: Date.now(),
-    wildcardUsed: false,
-    frozenPlayer: null,
-    turboActive: false,
-    turboPlayer: null,
-    teleportPending: false,
-    teleportPlayer: null,
-  };
+  const gameRef = ref(rtdb, `games/${gameId}`);
+  await runRTDBTransaction(gameRef, (liveRaw: any) => {
+    if (!liveRaw) return;
+    const live = liveRaw as GameState;
+    if (!live.currentTurn) return;
+    if (skippedPlayer && live.currentTurn !== skippedPlayer) return;
 
-  if (currentState && skippedPlayer) {
-    // Limpiar flags que afectaban al jugador que acaba de perder su turno
-    if (currentState.earthquakeActive && currentState.earthquakeTarget === skippedPlayer) {
-      updates['earthquakeActive'] = false;
-      updates['earthquakeTarget'] = null;
-    }
-    if (currentState.confusionActive && currentState.confusionTarget === skippedPlayer) {
-      updates['confusionActive'] = false;
-      updates['confusionTarget'] = null;
-    }
-    if (currentState.rivalTimerReduced) {
-      updates['rivalTimerReduced'] = false;
-    }
-    if (currentState.shieldActive && currentState.shieldPlayer !== skippedPlayer) {
-      updates['shieldActive'] = false;
-      updates['shieldPlayer'] = null;
-    }
-  } else {
-    // Fallback: limpiar todo (comportamiento anterior)
-    updates['rivalTimerReduced'] = false;
-    updates['earthquakeActive'] = false;
-    updates['earthquakeTarget'] = null;
-    updates['confusionActive'] = false;
-    updates['confusionTarget'] = null;
-    updates['shieldActive'] = false;
-    updates['shieldPlayer'] = null;
-  }
+    const next: any = {
+      ...liveRaw,
+      currentTurn: opponentId,
+      timerStart: Date.now(),
+      wildcardUsed: false,
+      frozenPlayer: null,
+      turboActive: false,
+      turboPlayer: null,
+      teleportPending: false,
+      teleportPlayer: null,
+    };
 
-  await update(ref(rtdb, `games/${gameId}`), updates);
+    const turnOwner = skippedPlayer || live.currentTurn;
+    if (live.earthquakeActive && live.earthquakeTarget === turnOwner) {
+      next.earthquakeActive = false;
+      next.earthquakeTarget = null;
+    }
+    if (live.confusionActive && live.confusionTarget === turnOwner) {
+      next.confusionActive = false;
+      next.confusionTarget = null;
+    }
+    if (live.rivalTimerReduced && live.rivalTimerReducedTarget === turnOwner) {
+      next.rivalTimerReduced = false;
+      next.rivalTimerReducedTarget = null;
+    }
+    if (live.shieldActive && live.shieldPlayer !== turnOwner) {
+      next.shieldActive = false;
+      next.shieldPlayer = null;
+    }
+
+    return next;
+  });
 };
 
 export const subscribeToGame = (
@@ -306,16 +323,34 @@ export const finishRound = async (
   player1: string,
   player2: string
 ): Promise<{ roundWinner: string | null; matchWinner: string | null }> => {
-  const newScore = { ...currentScore };
+  const gameSnap = await getDoc(doc(db, 'games', gameId));
+  const gameData = gameSnap.exists() ? (gameSnap.data() as GameDoc) : null;
+
+  // Idempotencia: si ya finalizó, no volver a procesar ronda.
+  if (gameData?.status === 'finished') {
+    return { roundWinner: winnerId, matchWinner: gameData.winner ?? null };
+  }
+
+  const liveScore = gameSnap.exists()
+    ? ((gameData?.score || currentScore) as Record<string, number>)
+    : currentScore;
+
+  const newScore = { ...liveScore };
   if (winnerId) newScore[winnerId] = (newScore[winnerId] || 0) + 1;
 
   const matchWinner = Object.keys(newScore).find((uid) => newScore[uid] >= 2) || null;
 
   if (matchWinner) {
-    // IMPORTANTE: Primero actualizar puntos/gemas del usuario ANTES de marcar status: 'finished'.
-    // Esto evita el race condition donde el listener del otro jugador detecta 'finished'
-    // y navega a resultado antes de que los puntos estén escritos.
-    await finishMatch(gameId, matchWinner, matchWinner === player1 ? player2 : player1);
+    // Intentar cerrar recompensas/historial sin bloquear el cierre oficial del juego.
+    try {
+      await finishMatch(gameId, matchWinner, matchWinner === player1 ? player2 : player1);
+    } catch (_) {
+      // Evitar que jugadores queden ocultos en Home por status stale.
+      await Promise.all([
+        updateDoc(doc(db, 'users', player1), { status: 'available' }).catch(() => {}),
+        updateDoc(doc(db, 'users', player2), { status: 'available' }).catch(() => {}),
+      ]);
+    }
 
     // Ahora sí marcar el game como finished (los puntos/gemas ya están escritos)
     await updateDoc(doc(db, 'games', gameId), {
@@ -323,6 +358,10 @@ export const finishRound = async (
       status: 'finished',
       winner: matchWinner,
     });
+    await Promise.all([
+      updateDoc(doc(db, 'users', player1), { status: 'available' }).catch(() => {}),
+      updateDoc(doc(db, 'users', player2), { status: 'available' }).catch(() => {}),
+    ]);
     const resetState = {
       board: ['', '', '', '', '', '', '', '', ''],
       currentTurn: player1,
@@ -335,6 +374,7 @@ export const finishRound = async (
       turboActive: false,
       turboPlayer: null,
       rivalTimerReduced: false,
+      rivalTimerReducedTarget: null,
       earthquakeActive: false,
       earthquakeTarget: null,
       confusionActive: false,
@@ -360,6 +400,7 @@ export const finishRound = async (
       turboActive: false,
       turboPlayer: null,
       rivalTimerReduced: false,
+      rivalTimerReducedTarget: null,
       earthquakeActive: false,
       earthquakeTarget: null,
       confusionActive: false,
@@ -399,10 +440,11 @@ export const finishMatch = async (
     }
   }
 
-  // Gems por resultado: 2-0 = 20, 2-1 = 15, perdedor siempre = 5
+  // Gems por resultado (todos los modos excepto entrenamiento):
+  // ganador 2-0 = +20, ganador 2-1 = +15, perdedor = -5
   const GEMS_WIN_SWEEP = 20;   // 2-0
   const GEMS_WIN_CLOSE = 15;   // 2-1
-  const GEMS_LOSS = 5;
+  const GEMS_LOSE = -5;
 
   const winnerGemsEarned = loserScore === 0 ? GEMS_WIN_SWEEP : GEMS_WIN_CLOSE;
 
@@ -447,7 +489,7 @@ export const finishMatch = async (
       wins: loserData.wins || 0,
       losses: (loserData.losses || 0) + 1,
       gamesPlayed: (loserData.gamesPlayed || 0) + 1,
-      gems: (loserData.gems || 0) + GEMS_LOSS,
+      gems: Math.max(0, (loserData.gems || 0) + GEMS_LOSE),
       currentWinStreak: 0,
       tournamentsWon: loserData.tournamentsWon || 0,
       wildcardsUsedTotal: loserData.wildcardsUsedTotal || 0,
@@ -472,7 +514,7 @@ export const finishMatch = async (
     else if (newWinStreak >= 3) streakBonus = 4;
 
     const winnerGemsTotal = (winnerData.gems || 0) + winnerGemsEarned + streakBonus;
-    const loserGemsTotal = (loserData.gems || 0) + GEMS_LOSS;
+    const loserGemsTotal = Math.max(0, (loserData.gems || 0) + GEMS_LOSE);
 
     // XP y niveles
     const winnerNewXP = (winnerData.xp || 0) + XP_WIN;
@@ -507,7 +549,7 @@ export const finishMatch = async (
   });
 
   // Royalty del creador: 2% del total de gemas del partido (silencioso)
-  const totalGems = winnerGemsEarned + GEMS_LOSS;
+  const totalGems = winnerGemsEarned + Math.abs(GEMS_LOSE);
   addCreatorRoyaltySafe(totalGems, { source: 'match', eventId: gameId }).catch(() => {});
 
   // Contribuir al pozo semanal: 1 gem por partido disputado
@@ -624,8 +666,16 @@ export const forfeitGame = async (
   forfeitingPlayerId: string,
   opponentId: string
 ): Promise<void> => {
-  // Primero actualizar puntos/gemas, luego marcar finished (mismo fix que finishRound)
-  await finishMatch(gameId, opponentId, forfeitingPlayerId);
+  // Primero actualizar puntos/gemas, luego marcar finished.
+  // Si falla la liquidacion, igual liberar estados para no dejar usuarios ocultos.
+  try {
+    await finishMatch(gameId, opponentId, forfeitingPlayerId);
+  } catch {
+    await Promise.all([
+      updateDoc(doc(db, 'users', forfeitingPlayerId), { status: 'available' }).catch(() => {}),
+      updateDoc(doc(db, 'users', opponentId), { status: 'available' }).catch(() => {}),
+    ]);
+  }
   await updateDoc(doc(db, 'games', gameId), {
     status: 'finished',
     winner: opponentId,

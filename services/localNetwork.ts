@@ -3,8 +3,8 @@
  * WiFi local player discovery using react-native-zeroconf (mDNS).
  *
  * When a user switches to "local" mode, they:
- *  1. Start broadcasting their presence on the local network via _tiktak._tcp
- *  2. Scan for other TIKTAK players on the same network
+ *  1. Start broadcasting their presence on the local network via _gridwar._tcp
+ *  2. Scan for other GRIDWAR players on the same network
  *
  * This enables local WiFi matches without needing an internet connection.
  */
@@ -21,13 +21,14 @@ export interface LocalPlayer {
   port: number;
 }
 
-const SERVICE_TYPE = '_tiktak';
+const SERVICE_TYPE = '_gridwar';
 const SERVICE_PROTOCOL = '_tcp';
 const SERVICE_PORT = 9898;
 
 let zeroconf: Zeroconf | null = null;
 let localListeners: ((players: LocalPlayer[]) => void)[] = [];
 const discoveredPlayers: Map<string, LocalPlayer> = new Map();
+let broadcastUid: string | null = null;
 
 function getZeroconf(): Zeroconf {
   if (!zeroconf) {
@@ -53,11 +54,12 @@ export const startBroadcast = (
 ): void => {
   try {
     const zc = getZeroconf();
+    broadcastUid = uid;
     zc.publishService(
       SERVICE_TYPE,
       SERVICE_PROTOCOL,
       'local.',
-      `tiktak_${uid}`,
+      `gridwar_${uid}`,
       SERVICE_PORT,
       { uid, username, avatar, rank, points: String(points) }
     );
@@ -72,14 +74,17 @@ export const startBroadcast = (
 export const stopBroadcast = (): void => {
   try {
     const zc = getZeroconf();
-    zc.unpublishService(`tiktak_`);
+    if (broadcastUid) {
+      zc.unpublishService(`gridwar_${broadcastUid}`);
+      broadcastUid = null;
+    }
   } catch (e) {
     console.warn('[LocalNetwork] Failed to stop broadcast:', e);
   }
 };
 
 /**
- * Start scanning for other TIKTAK players on the local network.
+ * Start scanning for other GRIDWAR players on the local network.
  * Returns an unsubscribe function.
  */
 export const startDiscovery = (
@@ -106,8 +111,8 @@ export const startDiscovery = (
     });
 
     zc.on('remove', (serviceName: string) => {
-      // serviceName is like "tiktak_<uid>"
-      const uid = serviceName.replace('tiktak_', '');
+      // serviceName is like "gridwar_<uid>"
+      const uid = serviceName.replace('gridwar_', '');
       discoveredPlayers.delete(uid);
       notifyListeners();
     });

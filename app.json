@@ -1,26 +1,26 @@
 {
   "expo": {
-    "name": "TIKTAK",
-    "slug": "tiktak",
+    "name": "GRIDWAR",
+    "slug": "gridwar",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./logo.png",
     "userInterfaceStyle": "dark",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0A0E1A"
+      "backgroundColor": "#0F1624"
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.tiktak.app"
+      "bundleIdentifier": "com.gridwar.app"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0A0E1A"
+        "foregroundImage": "./logo.png",
+        "backgroundColor": "#0F1624"
       },
-      "package": "com.tiktak.app",
+      "package": "com.gridwar.app",
       "googleServicesFile": "./google-services.json",
       "permissions": [
         "INTERNET",
@@ -33,17 +33,23 @@
       ]
     },
     "plugins": [
-      "expo-router",
-      "expo-font",
+      "./node_modules/expo-router/app.plugin.js",
+      "./node_modules/expo-font/app.plugin.js",
       [
-        "expo-notifications",
+        "./node_modules/expo-notifications/app.plugin.js",
         {
-          "icon": "./assets/notification-icon.png",
-          "color": "#00F5FF"
+          "icon": "./logo.png",
+          "color": "#60A5FA"
+        }
+      ],
+      [
+        "./node_modules/react-native-google-mobile-ads/app.plugin.js",
+        {
+          "androidAppId": "ca-app-pub-3940256099942544~3347511713"
         }
       ]
     ],
-    "scheme": "tiktak",
+    "scheme": "gridwar",
     "extra": {
       "router": {
         "origin": false

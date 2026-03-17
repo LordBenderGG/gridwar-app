@@ -3,10 +3,11 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '../store/authStore';
-import { COLORS } from '../constants/theme';
+import { useColors } from '../hooks/useColors';
 import { ONBOARDING_KEY } from './onboarding';
 
 export default function IndexScreen() {
+  const COLORS = useColors();
   const router = useRouter();
   const { user, loading } = useAuthStore();
 
@@ -16,11 +17,9 @@ export default function IndexScreen() {
     const checkOnboarding = async () => {
       const done = await AsyncStorage.getItem(ONBOARDING_KEY);
       if (!done) {
-        // Primera vez — mostrar onboarding
         router.replace('/onboarding');
         return;
       }
-      // Ya vio el onboarding — redirigir normal
       if (user) {
         router.replace('/(tabs)/home');
       } else {
@@ -32,17 +31,8 @@ export default function IndexScreen() {
   }, [user, loading]);
 
   return (
-    <View style={styles.container}>
+    <View style={{ flex: 1, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center' }}>
       <ActivityIndicator size="large" color={COLORS.primary} />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-});

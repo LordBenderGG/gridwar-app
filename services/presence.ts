@@ -10,7 +10,7 @@
  * Esto garantiza que SOLO los usuarios con la app abierta aparezcan como disponibles.
  */
 import { ref, onValue, onDisconnect, set, serverTimestamp, off } from 'firebase/database';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, setDoc, increment } from 'firebase/firestore';
 import { rtdb, db } from './firebase';
 
 export interface PresenceData {
@@ -47,13 +47,27 @@ export const registerPresence = (uid: string): (() => void) => {
 
   // Dar gems de bienvenida a usuarios existentes que aún no los tienen.
   // Se ejecuta una sola vez gracias al flag welcomeGemsGiven.
+  // También otorga el bonus diario de 5 gems (una vez cada 24 horas).
   getDoc(doc(db, 'users', uid)).then((snap) => {
     if (!snap.exists()) return;
     const data = snap.data();
-    if (!data.welcomeGemsGiven && (data.gems === undefined || data.gems < 5)) {
+
+    // Bonus de bienvenida (una sola vez, controlado por el flag)
+    if (!data.welcomeGemsGiven) {
       updateDoc(doc(db, 'users', uid), {
-        gems: 10,
+        gems: increment(10),
         welcomeGemsGiven: true,
+      }).catch(() => {});
+    }
+
+    // Bonus diario de 5 gems — máximo una vez cada 24 horas
+    const now = Date.now();
+    const lastDaily = data.lastDailyBonus || 0;
+    const MS_PER_DAY = 24 * 60 * 60 * 1000;
+    if (now - lastDaily >= MS_PER_DAY) {
+      updateDoc(doc(db, 'users', uid), {
+        gems: increment(5),
+        lastDailyBonus: now,
       }).catch(() => {});
     }
   }).catch(() => {});

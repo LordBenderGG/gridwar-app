@@ -6,7 +6,7 @@ import {
 import AdBanner from '../../components/AdBanner';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { collection, query, getDocs, orderBy, limit, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, getDocs, orderBy, limit, doc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { useTranslation } from 'react-i18next';
 import { db } from '../../services/firebase';
 import { logoutUser, uploadProfilePhoto } from '../../services/auth';
@@ -28,6 +28,18 @@ interface HistoryItem {
   date: any;
   type: string;
 }
+
+const WILDCARD_KEYS = ['turbo', 'time_reduce', 'teleport', 'shield', 'confusion', 'sabotage', 'freeze', 'earthquake'] as const;
+
+const normalizeWildcards = (raw: any): Record<string, number> => {
+  const out: Record<string, number> = {};
+  WILDCARD_KEYS.forEach((k) => {
+    const value = raw?.[k];
+    const n = typeof value === 'number' ? value : Number(value);
+    out[k] = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+  });
+  return out;
+};
 
 const createStyles = (COLORS: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
@@ -490,6 +502,23 @@ export default function PerfilScreen() {
     fetchHistory();
   }, [user?.uid]);
 
+  // Sincronizacion en tiempo real del perfil (comodines, gemas, etc.)
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsub = onSnapshot(doc(db, 'users', user.uid), (snap) => {
+      if (!snap.exists()) return;
+      const incoming = snap.data() as any;
+      const merged = {
+        ...(user as any),
+        ...incoming,
+        uid: incoming.uid || user.uid,
+        wildcards: normalizeWildcards(incoming.wildcards ?? user.wildcards),
+      };
+      setUser(merged as any);
+    });
+    return () => unsub();
+  }, [user?.uid]);
+
   const handleLogout = async () => {
     Alert.alert(t('profile.logout'), `${t('profile.logout')}?`, [
       { text: t('auth.back'), style: 'cancel' },
@@ -778,7 +807,8 @@ export default function PerfilScreen() {
         </View>
         <View style={styles.wildcardsGrid}>
           {WILDCARDS.map((w) => {
-            const count = (user.wildcards as unknown as Record<string, number>)[w.id] ?? 0;
+            const normalized = normalizeWildcards((user as any).wildcards);
+            const count = normalized[w.id] ?? 0;
             return (
               <View key={w.id} style={[styles.wildcardItem, count === 0 && styles.wildcardItemEmpty]}>
                 <Text style={styles.wildcardIcon}>{w.icon}</Text>

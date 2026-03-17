@@ -13,6 +13,7 @@ import {
 import { db } from './firebase';
 import { createGame } from './game';
 import { calculateRank } from './ranking';
+import { sendPushToUser } from './notifications';
 
 // Generador de IDs único compatible con Hermes (sin crypto.getRandomValues)
 function generateId(): string {
@@ -30,6 +31,9 @@ export interface Challenge {
   fromPhotoURL: string | null;
   fromRank: string;
   fromPoints: number;
+  fromFrame?: string | null;
+  fromNameColor?: string | null;
+  fromBoardTheme?: string | null;
   to: string;
   status: 'pending' | 'accepted' | 'rejected' | 'expired';
   createdAt: number;
@@ -41,6 +45,17 @@ const CHALLENGE_TIMEOUT_MS = 30 * 1000;
 const BLOCK_ON_REJECT_MS = 30 * 60 * 1000;
 const POINTS_NO_ACCEPT = -50;
 
+// Mapa de timers activos por challengeId para permitir su cancelación
+const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+export const cancelChallengeTimer = (challengeId: string): void => {
+  const timer = pendingTimers.get(challengeId);
+  if (timer !== undefined) {
+    clearTimeout(timer);
+    pendingTimers.delete(challengeId);
+  }
+};
+
 export const sendChallenge = async (
   fromUid: string,
   fromUsername: string,
@@ -48,8 +63,12 @@ export const sendChallenge = async (
   fromPhotoURL: string | null,
   fromRank: string,
   fromPoints: number,
-  toUid: string
+  toUid: string,
+  fromFrame: string | null = null,
+  fromNameColor: string | null = null,
+  fromBoardTheme: string | null = null
 ): Promise<string> => {
+  if (!fromUid || !toUid) throw new Error('INVALID_CHALLENGE_USERS');
   const challengeId = generateId();
   const now = Date.now();
 
@@ -61,6 +80,9 @@ export const sendChallenge = async (
     fromPhotoURL,
     fromRank,
     fromPoints,
+    fromFrame,
+    fromNameColor,
+    fromBoardTheme,
     to: toUid,
     status: 'pending',
     createdAt: now,
@@ -71,11 +93,22 @@ export const sendChallenge = async (
   await updateDoc(doc(db, 'users', fromUid), { status: 'challenged' });
   await updateDoc(doc(db, 'users', toUid), { status: 'challenged' });
 
+  // Enviar push al retado (funciona en background)
+  sendPushToUser(
+    toUid,
+    '⚔️ ¡Te han retado!',
+    `${fromUsername} te desafía a una batalla en GRIDWAR. ¡Tienes 30 segundos!`,
+    { type: 'challenge', challengeId },
+    'challenges'
+  ).catch(() => {});
+
   // Auto-expire después de 30s (solo funciona si la app está abierta;
   // para producción usar Cloud Functions)
-  setTimeout(async () => {
+  const timer = setTimeout(async () => {
+    pendingTimers.delete(challengeId);
     await expireChallenge(challengeId, fromUid, toUid);
   }, CHALLENGE_TIMEOUT_MS + 1000);
+  pendingTimers.set(challengeId, timer);
 
   return challengeId;
 };
@@ -84,8 +117,13 @@ export const acceptChallenge = async (
   challengeId: string,
   challenge: Challenge,
   toUsername: string,
-  toAvatar: string
+  toAvatar: string,
+  toPhotoURL: string | null = null,
+  toFrame: string | null = null,
+  toNameColor: string | null = null
 ): Promise<string> => {
+  if (!challenge.from || !challenge.to) throw new Error('INVALID_CHALLENGE_USERS');
+  cancelChallengeTimer(challengeId);
   const gameId = generateId();
 
   // Guardar gameId en el challenge ANTES de crear el game,
@@ -104,7 +142,15 @@ export const acceptChallenge = async (
     toUsername,
     challenge.fromAvatar,
     toAvatar,
-    'global'
+    'global',
+    undefined,
+    challenge.fromPhotoURL,
+    toPhotoURL,
+    challenge.fromBoardTheme ?? null,
+    challenge.fromFrame ?? null,
+    toFrame,
+    challenge.fromNameColor ?? null,
+    toNameColor
   );
 
   return gameId;
@@ -115,6 +161,7 @@ export const rejectChallenge = async (
   fromUid: string,
   toUid: string
 ): Promise<void> => {
+  cancelChallengeTimer(challengeId);
   await updateDoc(doc(db, 'challenges', challengeId), { status: 'rejected' });
   // Penalizar al receptor que rechaza (toUid)
   await penalizeNoAccept(toUid);

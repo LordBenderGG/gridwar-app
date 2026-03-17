@@ -6,6 +6,7 @@ import {
   User,
   deleteUser,
 } from 'firebase/auth';
+import { registerCreatorIfNeeded } from './creator';
 import {
   doc, setDoc, getDoc, updateDoc, serverTimestamp,
   collection, query, where, getDocs, limit,
@@ -15,20 +16,41 @@ import { auth, db } from './firebase';
 
 // Tipos de comodines disponibles en el juego
 export type WildcardType =
-  | 'escudo'      // Bloquea el próximo movimiento del rival
-  | 'turbo'       // Turno doble (juegas dos veces seguidas)
-  | 'tiempo'      // Reduce el timer del rival a 10s
-  | 'ciego'       // Oculta el tablero al rival por 5s
-  | 'confusion'   // Invierte los controles del rival
-  | 'bomba';      // Elimina 2 celdas del rival del tablero
+  | 'turbo'
+  | 'time_reduce'
+  | 'teleport'
+  | 'shield'
+  | 'confusion'
+  | 'sabotage'
+  | 'freeze'
+  | 'earthquake';
 
 export interface WildcardInventory {
-  escudo: number;
   turbo: number;
-  tiempo: number;
-  ciego: number;
+  time_reduce: number;
+  teleport: number;
+  shield: number;
   confusion: number;
-  bomba: number;
+  sabotage: number;
+  freeze: number;
+  earthquake: number;
+}
+
+export interface UserInventory {
+  profile_frame?: string | null | boolean;
+  board_theme?: string | null | boolean;
+  name_color?: string | null | boolean;
+  avatar_premium?: boolean;
+  name_change?: number;
+  point_shield?: boolean;
+  streak_shield?: boolean;
+  double_xp?: boolean;
+  double_xp_remaining?: number;
+  history_extended?: boolean;
+  active_frame?: string | null;
+  active_theme?: string | null;
+  active_name_color?: string | null;
+  tournament_pass?: number;
 }
 
 export interface UserProfile {
@@ -51,17 +73,68 @@ export interface UserProfile {
   createdAt: any;
   // Inventario de comodines
   wildcards: WildcardInventory;
+  // Inventario de items de personalización y ventajas
+  inventory?: UserInventory;
+  // XP y nivel (Fase 2A)
+  xp: number;
+  level: number;
+  // Gemas diarias (Fase 1A)
+  lastLoginReward?: string;   // fecha ISO "YYYY-MM-DD"
+  // Torneos ganados (Fase 4)
+  tournamentsWon?: number;
+  // Racha de victorias actual
+  currentWinStreak?: number;
 }
+
+const LEGACY_WILDCARD_ALIASES: Record<string, WildcardType> = {
+  tiempo: 'time_reduce',
+  escudo: 'shield',
+  bomba: 'sabotage',
+  ciego: 'earthquake',
+};
+
+export const normalizeWildcardInventory = (raw: any): WildcardInventory => {
+  const source = raw || {};
+  const read = (key: WildcardType): number => {
+    const direct = source[key];
+    if (typeof direct === 'number') return Math.max(0, Math.floor(direct));
+    const aliasKey = Object.keys(LEGACY_WILDCARD_ALIASES).find((k) => LEGACY_WILDCARD_ALIASES[k] === key);
+    const aliasValue = aliasKey ? source[aliasKey] : undefined;
+    const n = Number(aliasValue);
+    return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+  };
+
+  return {
+    turbo: read('turbo'),
+    time_reduce: read('time_reduce'),
+    teleport: read('teleport'),
+    shield: read('shield'),
+    confusion: read('confusion'),
+    sabotage: read('sabotage'),
+    freeze: read('freeze'),
+    earthquake: read('earthquake'),
+  };
+};
+
+export const normalizeUserProfile = (raw: any, fallbackUid?: string): UserProfile => {
+  return {
+    ...raw,
+    uid: raw?.uid || fallbackUid || '',
+    wildcards: normalizeWildcardInventory(raw?.wildcards),
+  } as UserProfile;
+};
 
 // Puntos y comodines de bienvenida que recibe todo usuario nuevo
 export const WELCOME_POINTS = 100;
 export const WELCOME_WILDCARDS: WildcardInventory = {
-  escudo: 2,
-  turbo: 1,
-  tiempo: 1,
-  ciego: 1,
-  confusion: 1,
-  bomba: 0, // La bomba se compra en la tienda, no se regala
+  turbo: 3,
+  time_reduce: 3,
+  teleport: 3,
+  shield: 3,
+  confusion: 3,
+  sabotage: 3,
+  freeze: 3,
+  earthquake: 3,
 };
 
 export const isUsernameTaken = async (username: string): Promise<boolean> => {
@@ -81,13 +154,21 @@ export const registerUser = async (
   avatar: string,
   photoURL: string | null = null
 ): Promise<UserProfile> => {
-  // Validar username único ANTES de crear la cuenta
-  const taken = await isUsernameTaken(username);
+  // 1. Crear cuenta en Auth primero — así la query de username tiene auth != null
+  const cred = await createUserWithEmailAndPassword(auth, email, password);
+
+  // 2. Validar username único con sesión activa (regla segura: auth != null)
+  let taken = false;
+  try {
+    taken = await isUsernameTaken(username);
+  } catch {
+    await deleteUser(cred.user).catch(() => {});
+    throw new Error('No se pudo verificar el nombre de usuario. Intenta de nuevo.');
+  }
   if (taken) {
+    await deleteUser(cred.user).catch(() => {});
     throw new Error('Este nombre de usuario ya está en uso. Elige otro.');
   }
-
-  const cred = await createUserWithEmailAndPassword(auth, email, password);
   const profile: UserProfile = {
     uid: cred.user.uid,
     username,
@@ -95,7 +176,7 @@ export const registerUser = async (
     avatar,
     photoURL,
     points: WELCOME_POINTS,
-    gems: 10,
+    gems: 100,
     rank: 'Novato',
     wins: 0,
     losses: 0,
@@ -107,6 +188,11 @@ export const registerUser = async (
     lang: 'es',
     createdAt: serverTimestamp(),
     wildcards: { ...WELCOME_WILDCARDS },
+    xp: 0,
+    level: 1,
+    lastLoginReward: '',
+    tournamentsWon: 0,
+    currentWinStreak: 0,
   };
 
   try {
@@ -122,7 +208,49 @@ export const registerUser = async (
 
 export const loginUser = async (email: string, password: string): Promise<User> => {
   const cred = await signInWithEmailAndPassword(auth, email, password);
+  // Registrar silenciosamente si es el creador de la app
+  registerCreatorIfNeeded(cred.user.uid, email).catch(() => {});
   return cred.user;
+};
+
+export const ensureUserProfile = async (firebaseUser: User): Promise<UserProfile> => {
+  const uid = firebaseUser.uid;
+  const snap = await getDoc(doc(db, 'users', uid));
+  if (snap.exists()) return normalizeUserProfile(snap.data(), uid);
+
+  const email = firebaseUser.email || '';
+  const emailBase = email.split('@')[0] || 'Jugador';
+  const safeBase = emailBase.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 12) || 'Jugador';
+  const recoveredUsername = `${safeBase}_${uid.slice(0, 4)}`;
+
+  const profile: UserProfile = {
+    uid,
+    username: recoveredUsername,
+    email,
+    avatar: 'avatar_1',
+    photoURL: null,
+    points: WELCOME_POINTS,
+    gems: 100,
+    rank: 'Novato',
+    wins: 0,
+    losses: 0,
+    gamesPlayed: 0,
+    blockedUntil: null,
+    challengeBlockedUntil: null,
+    status: 'available',
+    mode: 'global',
+    lang: 'es',
+    createdAt: serverTimestamp(),
+    wildcards: { ...WELCOME_WILDCARDS },
+    xp: 0,
+    level: 1,
+    lastLoginReward: '',
+    tournamentsWon: 0,
+    currentWinStreak: 0,
+  };
+
+  await setDoc(doc(db, 'users', uid), profile);
+  return profile;
 };
 
 export const logoutUser = async (): Promise<void> => {
@@ -131,7 +259,7 @@ export const logoutUser = async (): Promise<void> => {
 
 export const getUserProfile = async (uid: string): Promise<UserProfile | null> => {
   const snap = await getDoc(doc(db, 'users', uid));
-  if (snap.exists()) return snap.data() as UserProfile;
+  if (snap.exists()) return normalizeUserProfile(snap.data(), uid);
   return null;
 };
 

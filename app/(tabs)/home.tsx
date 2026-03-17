@@ -1,28 +1,41 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
   RefreshControl, TextInput, Alert, ActivityIndicator,
   Animated as RNAnimated, Dimensions,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import {
   collection, query, onSnapshot, limit, doc, updateDoc,
-  onSnapshot as fsOnSnapshot,
+  onSnapshot as fsOnSnapshot, increment,
 } from 'firebase/firestore';
-import { db } from '../../services/firebase';
+import { db, auth } from '../../services/firebase';
 import { UserProfile } from '../../services/auth';
 import { sendChallenge, subscribeToIncomingChallenges, acceptChallenge, rejectChallenge, Challenge } from '../../services/challenge';
 import { subscribeToAllPresence } from '../../services/presence';
 import { useAuthStore } from '../../store/authStore';
 import PlayerCard from '../../components/PlayerCard';
 import ChallengeModal from '../../components/ChallengeModal';
-import { COLORS } from '../../constants/theme';
+import { useColors } from '../../hooks/useColors';
+import { playSound } from '../../services/sound';
+import AdBanner from '../../components/AdBanner';
+import RewardedAdButton from '../../components/RewardedAdButton';
+import { scheduleLocalChallengeNotification } from '../../services/notifications';
+import { getDailyMissions, DailyMission } from '../../services/missions';
+import { checkAndResetSeason, getCurrentSeason, daysUntilSeasonEnd } from '../../services/seasons';
+import { getTranslatedRankName } from '../../services/ranking';
+import '../../i18n';
 
 const { width } = Dimensions.get('window');
 
 export default function HomeScreen() {
+  const COLORS = useColors();
+  const styles = useMemo(() => createStyles(COLORS), [COLORS]);
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, updateUser } = useAuthStore();
+  const actorUid = auth.currentUser?.uid || user?.uid || '';
+  const { t } = useTranslation();
   const [players, setPlayers] = useState<UserProfile[]>([]);
   const [onlineMap, setOnlineMap] = useState<Map<string, boolean>>(new Map());
   const [search, setSearch] = useState('');
@@ -31,8 +44,51 @@ export default function HomeScreen() {
   const [challenging, setChallenging] = useState<string | null>(null);
   const [sentChallengeId, setSentChallengeId] = useState<string | null>(null);
   const [sentChallengeTo, setSentChallengeTo] = useState<string | null>(null);
+  // Misiones diarias
+  const [dailyMissions, setDailyMissions] = useState<DailyMission[]>([]);
+  const [seasonDaysLeft, setSeasonDaysLeft] = useState<number | null>(null);
+  const [focusKey, setFocusKey] = useState(0);
+  const [missionsExpanded, setMissionsExpanded] = useState(false);
   const challengeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastChallengeIdRef = useRef<string | null>(null);
   const pulseAnim = useRef(new RNAnimated.Value(1)).current;
+
+  // Re-suscribir presencia y datos al volver de otra pantalla (ej: blocked.tsx)
+  useFocusEffect(
+    useCallback(() => {
+      setFocusKey(k => k + 1);
+    }, [])
+  );
+
+  // ── Gemas diarias (Fase 1A) ──────────────────────────────────────────
+  const gemFloatAnim = useRef(new RNAnimated.Value(0)).current;
+  const gemOpacityAnim = useRef(new RNAnimated.Value(0)).current;
+  const [showGemReward, setShowGemReward] = useState(false);
+
+  useEffect(() => {
+    if (!user || !actorUid) return;
+    const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+    if ((user.lastLoginReward ?? '') === today) return;
+
+    // Dar +10 gemas usando increment() para evitar race conditions
+    updateDoc(doc(db, 'users', actorUid), {
+      gems: increment(10),
+      lastLoginReward: today,
+    }).then(() => {
+      updateUser({ gems: (user.gems || 0) + 10, lastLoginReward: today });
+      // Mostrar animación flotante
+      setShowGemReward(true);
+      gemFloatAnim.setValue(0);
+      gemOpacityAnim.setValue(1);
+      RNAnimated.parallel([
+        RNAnimated.timing(gemFloatAnim, { toValue: -60, duration: 1800, useNativeDriver: true }),
+        RNAnimated.sequence([
+          RNAnimated.delay(1000),
+          RNAnimated.timing(gemOpacityAnim, { toValue: 0, duration: 800, useNativeDriver: true }),
+        ]),
+      ]).start(() => setShowGemReward(false));
+    }).catch(() => {});
+  }, [actorUid]);
 
   // Pulsación en el botón de retar
   useEffect(() => {
@@ -44,37 +100,66 @@ export default function HomeScreen() {
     ).start();
   }, []);
 
+  // Cargar misiones diarias
+  useEffect(() => {
+    if (!user || !actorUid) return;
+    getDailyMissions(actorUid)
+      .then(setDailyMissions)
+      .catch(() => {});
+  }, [actorUid]);
+
+  // Temporadas (Fase 5): verificar reset + calcular días restantes
+  useEffect(() => {
+    if (!user || !actorUid) return;
+    checkAndResetSeason().catch(() => {});
+    getCurrentSeason().then((season) => {
+      if (!season) return;
+      const days = daysUntilSeasonEnd(season.endDate);
+      setSeasonDaysLeft(days);
+    }).catch(() => {});
+  }, [actorUid]);
+
   // Suscripción a la lista de jugadores (Firestore)
   useEffect(() => {
-    if (!user) return;
+    if (!user || !actorUid) return;
     const q = query(collection(db, 'users'), limit(100));
     const unsub = onSnapshot(q, (snap) => {
       const list = snap.docs
         .map((d) => d.data() as UserProfile)
-        .filter((p) => p.uid !== user.uid);
+        .filter((p) => p.uid !== actorUid);
       setPlayers(list);
     });
     return () => unsub();
-  }, [user?.uid]);
+  }, [actorUid, focusKey]);
 
   // Suscripción a presencia online (Realtime Database)
-  // Solo los usuarios con la app abierta aparecen en el mapa con online: true
   useEffect(() => {
     const unsub = subscribeToAllPresence((map) => {
       setOnlineMap(new Map(map));
     });
     return () => unsub();
-  }, []);
+  }, [focusKey]);
 
   // Suscripción a retos entrantes
   useEffect(() => {
-    if (!user) return;
-    const unsub = subscribeToIncomingChallenges(user.uid, (challenges) => {
-      if (challenges.length > 0) setIncomingChallenge(challenges[0]);
-      else setIncomingChallenge(null);
+    if (!user || !actorUid) return;
+    const unsub = subscribeToIncomingChallenges(actorUid, (challenges) => {
+        if (challenges.length > 0) {
+        const challenge = challenges[0];
+        setIncomingChallenge(challenge);
+        if (challenge.challengeId !== lastChallengeIdRef.current) {
+          lastChallengeIdRef.current = challenge.challengeId;
+          playSound('challenge');
+          // Notificación local (útil cuando la app está en background parcial)
+          scheduleLocalChallengeNotification(challenge.fromUsername).catch(() => {});
+        }
+      } else {
+        setIncomingChallenge(null);
+        lastChallengeIdRef.current = null;
+      }
     });
     return () => unsub();
-  }, [user?.uid]);
+  }, [actorUid]);
 
   // Suscribir al reto enviado para detectar cuando es aceptado
   useEffect(() => {
@@ -86,15 +171,16 @@ export default function HomeScreen() {
         const data = snap.data();
         if (data.status === 'accepted' && data.gameId) {
           clearPendingChallenge();
-          router.push(`/game/${data.gameId}`);
+          const navUid = auth.currentUser?.uid || actorUid;
+          router.push(`/game/${data.gameId}?myUid=${navUid}`);
         } else if (data.status === 'rejected' || data.status === 'expired') {
           clearPendingChallenge();
-          Alert.alert('Reto sin respuesta', 'El jugador rechazó tu reto o no respondió a tiempo.');
+          Alert.alert(t('home.challengeNoAnswer'), t('home.challengeRejected'));
         }
       }
     );
     return () => unsub();
-  }, [sentChallengeId]);
+  }, [sentChallengeId, actorUid]);
 
   const clearPendingChallenge = () => {
     if (challengeTimeoutRef.current) clearTimeout(challengeTimeoutRef.current);
@@ -105,6 +191,10 @@ export default function HomeScreen() {
 
   const handleChallenge = async (target: UserProfile) => {
     if (!user) return;
+    if (!actorUid) {
+      Alert.alert('Error', 'Sesion invalida. Cierra sesion e inicia de nuevo.');
+      return;
+    }
 
     if (user.challengeBlockedUntil && Date.now() < user.challengeBlockedUntil) {
       router.push('/blocked');
@@ -113,24 +203,24 @@ export default function HomeScreen() {
 
     if (user.status !== 'available') {
       Alert.alert(
-        'No disponible',
+        t('home.notAvailable'),
         user.status === 'in_game'
-          ? 'Estás en una partida activa.'
+          ? t('home.youInGame')
           : user.status === 'challenged'
-          ? 'Ya tienes un reto pendiente.'
-          : 'No puedes retar ahora mismo.'
+          ? t('home.youChallenged')
+          : t('home.youBusy')
       );
       return;
     }
 
     if (target.status !== 'available') {
       Alert.alert(
-        'Jugador no disponible',
+        t('home.playerNotAvailable'),
         target.status === 'in_game'
-          ? `${target.username} está en una partida.`
+          ? t('home.playerInGame', { username: target.username })
           : target.status === 'challenged'
-          ? `${target.username} ya tiene un reto pendiente.`
-          : `${target.username} no puede recibir retos ahora.`
+          ? t('home.playerChallenged', { username: target.username })
+          : t('home.playerBusy', { username: target.username })
       );
       return;
     }
@@ -138,13 +228,16 @@ export default function HomeScreen() {
     setChallenging(target.uid);
     try {
       const challengeId = await sendChallenge(
-        user.uid,
+        actorUid,
         user.username,
         user.avatar,
         user.photoURL,
         user.rank,
         user.points,
-        target.uid
+        target.uid,
+        user.inventory?.active_frame ?? null,
+        user.inventory?.active_name_color ?? null,
+        user.inventory?.active_theme ?? null
       );
       setSentChallengeId(challengeId);
       setSentChallengeTo(target.uid);
@@ -154,15 +247,15 @@ export default function HomeScreen() {
       }, 35000);
     } catch (e: any) {
       setChallenging(null);
-      Alert.alert('Error', e?.message || 'No se pudo enviar el reto. Intenta de nuevo.');
+      Alert.alert('Error', e?.message || t('home.challengeError'));
     }
   };
 
   const handleCancelChallenge = async () => {
-    if (!sentChallengeId || !user || !sentChallengeTo) return;
+    if (!sentChallengeId || !user || !sentChallengeTo || !actorUid) return;
     try {
       await updateDoc(doc(db, 'challenges', sentChallengeId), { status: 'expired' });
-      await updateDoc(doc(db, 'users', user.uid), { status: 'available' });
+      await updateDoc(doc(db, 'users', actorUid), { status: 'available' });
       await updateDoc(doc(db, 'users', sentChallengeTo), { status: 'available' });
     } catch (_) {}
     clearPendingChallenge();
@@ -175,25 +268,39 @@ export default function HomeScreen() {
         incomingChallenge.challengeId,
         incomingChallenge,
         user.username,
-        user.avatar
+        user.avatar,
+        user.photoURL ?? null,
+        user.inventory?.active_frame ?? null,
+        user.inventory?.active_name_color ?? null
       );
       setIncomingChallenge(null);
-      router.push(`/game/${gameId}`);
+      const navUid = auth.currentUser?.uid || actorUid;
+      router.push(`/game/${gameId}?myUid=${navUid}`);
     } catch (e: any) {
-      Alert.alert('Error', e?.message || 'No se pudo aceptar el reto.');
+      Alert.alert('Error', e?.message || t('home.challengeError'));
     }
   };
 
   const handleRejectChallenge = async () => {
-    if (!incomingChallenge || !user) return;
+    if (!incomingChallenge || !user || !actorUid) return;
     if (Date.now() > incomingChallenge.expiresAt) {
       setIncomingChallenge(null);
       return;
     }
     try {
-      await rejectChallenge(incomingChallenge.challengeId, incomingChallenge.from, user.uid);
+      await rejectChallenge(incomingChallenge.challengeId, incomingChallenge.from, actorUid);
     } catch (_) {}
     setIncomingChallenge(null);
+  };
+
+  const handleSetMode = async (newMode: 'global' | 'local') => {
+    if (!user || !actorUid) return;
+    if (user.mode === newMode) return;
+    try {
+      await updateDoc(doc(db, 'users', actorUid), { mode: newMode });
+    } catch {
+      Alert.alert('Error', t('home.modeChangeError'));
+    }
   };
 
   const onRefresh = useCallback(() => {
@@ -202,12 +309,7 @@ export default function HomeScreen() {
   }, []);
 
   // ── Lógica de filtrado ──────────────────────────────────────────────────────
-  // myMode: 'global' solo ve a jugadores globales; 'local' ve a todos
   const myMode = user?.mode ?? 'global';
-
-  // rtdbLoaded: el mapa de presencia ya recibió al menos un dato de RTDB.
-  // Si aún no cargó, usamos solo Firestore (status='available') para no
-  // mostrar la lista vacía mientras RTDB inicializa.
   const rtdbLoaded = onlineMap.size > 0;
 
   const filteredByMode = players.filter((p) =>
@@ -235,17 +337,11 @@ export default function HomeScreen() {
 
   const myStatus = user?.status || 'available';
   const statusColor = myStatus === 'available' ? COLORS.success : myStatus === 'in_game' ? COLORS.warning : COLORS.danger;
-  const statusLabel = myStatus === 'available' ? '● EN LÍNEA' : myStatus === 'in_game' ? '● EN PARTIDA' : '● OCUPADO';
-
-  const handleToggleMode = async () => {
-    if (!user) return;
-    const newMode = myMode === 'global' ? 'local' : 'global';
-    try {
-      await updateDoc(doc(db, 'users', user.uid), { mode: newMode });
-    } catch {
-      Alert.alert('Error', 'No se pudo cambiar el modo.');
-    }
-  };
+  const statusLabel = myStatus === 'available'
+    ? t('home.statusOnline')
+    : myStatus === 'in_game'
+    ? t('home.statusInGame')
+    : t('home.statusBusy');
 
   // Pantalla de "esperando respuesta al reto"
   if (sentChallengeId && sentChallengeTo) {
@@ -253,19 +349,20 @@ export default function HomeScreen() {
     return (
       <View style={styles.waitingContainer}>
         <RNAnimated.Text style={[styles.logo, { transform: [{ scale: pulseAnim }] }]}>
-          TIKTAK
+          <Text style={{ color: '#FFFFFF' }}>GRID</Text>
+          <Text style={{ color: '#FF3B30' }}>WAR</Text>
         </RNAnimated.Text>
         <View style={styles.waitingCard}>
           <Text style={styles.waitingEmoji}>⚔️</Text>
           <ActivityIndicator size="large" color={COLORS.primary} style={{ marginBottom: 16 }} />
-          <Text style={styles.waitingTitle}>RETO ENVIADO</Text>
+          <Text style={styles.waitingTitle}>{t('home.challengeSent')}</Text>
           <Text style={styles.waitingSubtitle}>
-            Esperando respuesta de{'\n'}
+            {t('home.challengeWaiting')}{'\n'}
             <Text style={styles.waitingName}>{targetPlayer?.username || '...'}</Text>
           </Text>
-          <Text style={styles.waitingHint}>⏱ El reto expira en 30 segundos</Text>
+          <Text style={styles.waitingHint}>{t('home.challengeExpires')}</Text>
           <TouchableOpacity style={styles.cancelBtn} onPress={handleCancelChallenge}>
-            <Text style={styles.cancelBtnText}>✕ CANCELAR RETO</Text>
+            <Text style={styles.cancelBtnText}>{t('home.cancelChallenge')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -276,49 +373,42 @@ export default function HomeScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.logo}>TIKTAK</Text>
-          <Text style={styles.logoSub}>3 en Raya · Sin piedad</Text>
-        </View>
+        <Text style={[styles.logo, { color: COLORS.primary, textShadowColor: COLORS.primary }]}>{t('home.title')}</Text>
         <View style={styles.headerRight}>
+          <TouchableOpacity style={styles.helpBtn} onPress={() => router.push('/guia')}>
+            <Text style={styles.helpBtnText}>?</Text>
+          </TouchableOpacity>
           <View style={[styles.statusPill, { borderColor: statusColor }]}>
             <Text style={[styles.statusPillText, { color: statusColor }]}>{statusLabel}</Text>
-          </View>
-          {/* Botón modo global / local */}
-          <TouchableOpacity
-            style={[styles.modePill, { borderColor: myMode === 'global' ? COLORS.primary : COLORS.accent }]}
-            onPress={handleToggleMode}
-          >
-            <Text style={[styles.modePillText, { color: myMode === 'global' ? COLORS.primary : COLORS.accent }]}>
-              {myMode === 'global' ? '🌍 GLOBAL' : '📍 LOCAL'}
-            </Text>
-          </TouchableOpacity>
-          <View style={styles.gemsBadge}>
-            <Text style={styles.gemsText}>💎 {user?.gems || 0}</Text>
           </View>
         </View>
       </View>
 
-      {/* Stats bar */}
+      {/* Stats bar — 5 columnas: Puntos / Victorias / Rango / En línea / Gemas */}
       <View style={styles.statsBar}>
         <View style={styles.statItem}>
           <Text style={styles.statValue}>{user?.points || 0}</Text>
-          <Text style={styles.statLabel}>PUNTOS</Text>
+          <Text style={styles.statLabel}>{t('home.points')}</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
           <Text style={styles.statValue}>{user?.wins || 0}</Text>
-          <Text style={[styles.statLabel, { color: COLORS.success }]}>VICTORIAS</Text>
+          <Text style={[styles.statLabel, { color: COLORS.success }]}>{t('home.wins')}</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={[styles.statValue, { color: COLORS.warning }]}>{user?.rank}</Text>
-          <Text style={styles.statLabel}>RANGO</Text>
+          <Text style={[styles.statValue, { color: COLORS.warning, fontSize: 12 }]}>{user?.rank ? getTranslatedRankName(user.rank) : ''}</Text>
+          <Text style={styles.statLabel}>{t('home.rank')}</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
           <Text style={[styles.statValue, { color: COLORS.primary }]}>{filtered.length}</Text>
-          <Text style={styles.statLabel}>EN LÍNEA</Text>
+          <Text style={styles.statLabel}>{t('home.online')}</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <Text style={[styles.statValue, { color: '#FFD700' }]}>💎 {user?.gems || 0}</Text>
+          <Text style={styles.statLabel}>{t('home.gems')}</Text>
         </View>
       </View>
 
@@ -327,23 +417,101 @@ export default function HomeScreen() {
         <Text style={styles.searchIcon}>🔍</Text>
         <TextInput
           style={styles.searchInput}
-          placeholder="Buscar jugador online..."
+          placeholder={t('home.searchPlaceholder')}
           placeholderTextColor={COLORS.textSecondary}
           value={search}
           onChangeText={setSearch}
         />
       </View>
 
+      {/* Botones de modo — 2 columnas */}
+      <View style={styles.modeRow}>
+        <TouchableOpacity
+          style={[styles.modeBtn, myMode === 'global' && styles.modeBtnActive]}
+          onPress={() => handleSetMode('global')}
+        >
+          <Text style={[styles.modeBtnText, myMode === 'global' && styles.modeBtnTextActive]}>
+            {t('home.globalMode')}
+          </Text>
+          <Text style={styles.modeBtnDesc}>{t('home.globalModeDesc')}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.modeBtn, myMode === 'local' && styles.modeBtnActive]}
+          onPress={() => handleSetMode('local')}
+        >
+          <Text style={[styles.modeBtnText, myMode === 'local' && styles.modeBtnTextActive]}>
+            {t('home.localMode')}
+          </Text>
+          <Text style={styles.modeBtnDesc}>{t('home.localModeDesc')}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Banner fin de temporada (Fase 5) */}
+      {seasonDaysLeft !== null && seasonDaysLeft <= 3 && (
+        <View style={styles.seasonBanner}>
+          <Text style={styles.seasonBannerTitle}>{t('home.seasonEndTitle')}</Text>
+          <Text style={styles.seasonBannerText}>
+            {seasonDaysLeft === 0
+              ? t('home.seasonEndToday')
+              : t('home.seasonEndDays', { days: seasonDaysLeft })}
+          </Text>
+        </View>
+      )}
+
+      {/* Misiones diarias — colapsable */}
+      {dailyMissions.length > 0 && (
+        <View style={styles.missionsCard}>
+          <TouchableOpacity style={styles.missionCardHeader} onPress={() => setMissionsExpanded(e => !e)}>
+            <Text style={styles.missionCardTitle}>{t('home.dailyMissions')}</Text>
+            <View style={styles.missionCardRight}>
+              <Text style={styles.missionCardCount}>
+                {dailyMissions.filter(m => m.completed).length}/{dailyMissions.length}
+              </Text>
+              <Text style={styles.missionChevron}>{missionsExpanded ? '▲' : '▼'}</Text>
+            </View>
+          </TouchableOpacity>
+          {missionsExpanded && <View style={{ height: 10 }} />}
+          {missionsExpanded && dailyMissions.map((m) => {
+            const pct = Math.min(1, m.progress / m.target);
+            return (
+              <View key={m.id} style={styles.missionRow}>
+                <View style={styles.missionInfo}>
+                  <Text style={[styles.missionLabel, m.completed && styles.missionLabelDone]}>
+                    {m.completed ? '✓ ' : ''}{t('missions.' + m.id) || m.label}
+                  </Text>
+                  <Text style={styles.missionDesc}>{t('missions.' + m.id + '_desc') || m.description}</Text>
+                  <View style={styles.missionBarBg}>
+                    <View style={[styles.missionBarFill, { width: `${pct * 100}%` }]} />
+                  </View>
+                </View>
+                <Text style={[styles.missionReward, m.completed && styles.missionRewardDone]}>
+                  +{m.reward}💎
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      )}
+
+      {/* Banner AdMob */}
+      <AdBanner style={{ marginBottom: 8 }} />
+
+      {/* Video recompensado */}
+      <RewardedAdButton
+        label="▶ Ver video y ganar 10 💎 GRATIS"
+        gemAmount={10}
+      />
+
       {/* Título sección */}
       <View style={styles.sectionHeader}>
         <View style={styles.onlineDot} />
-        <Text style={styles.sectionTitle}>JUGADORES EN LÍNEA</Text>
+        <Text style={styles.sectionTitle}>{t('home.onlinePlayers')}</Text>
         <View style={styles.sectionBadge}>
           <Text style={styles.sectionBadgeText}>{filtered.length}</Text>
         </View>
       </View>
-
       <FlatList
+        style={{ flex: 1 }}
         data={filtered}
         keyExtractor={(item) => item.uid}
         renderItem={({ item }) => (
@@ -359,10 +527,8 @@ export default function HomeScreen() {
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyEmoji}>🎮</Text>
-            <Text style={styles.emptyTitle}>Sin rivales en línea</Text>
-            <Text style={styles.emptyText}>
-              Nadie más tiene la app abierta ahora.{'\n'}¡Compártela con tus amigos!
-            </Text>
+            <Text style={styles.emptyTitle}>{t('home.noPlayers')}</Text>
+            <Text style={styles.emptyText}>{t('home.noPlayersMsg')}</Text>
           </View>
         }
         contentContainerStyle={{ paddingBottom: 24 }}
@@ -374,11 +540,27 @@ export default function HomeScreen() {
         onAccept={handleAcceptChallenge}
         onReject={handleRejectChallenge}
       />
+
+      {/* Animación gemas diarias */}
+      {showGemReward && (
+        <RNAnimated.View
+          style={[
+            styles.gemFloatBadge,
+            {
+              opacity: gemOpacityAnim,
+              transform: [{ translateY: gemFloatAnim }],
+            },
+          ]}
+          pointerEvents="none"
+        >
+          <Text style={styles.gemFloatText}>+10 💎</Text>
+        </RNAnimated.View>
+      )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (COLORS: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
@@ -440,8 +622,8 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
+    alignItems: 'center',
+    marginBottom: 12,
   },
   logo: {
     fontSize: 32,
@@ -452,13 +634,6 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 14,
   },
-  logoSub: {
-    color: COLORS.textSecondary,
-    fontSize: 10,
-    letterSpacing: 2,
-    marginTop: -2,
-  },
-  headerRight: { alignItems: 'flex-end', gap: 6 },
   statusPill: {
     borderWidth: 1,
     borderRadius: 20,
@@ -466,36 +641,20 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   statusPillText: { fontSize: 10, fontWeight: 'bold', letterSpacing: 1 },
-  modePill: {
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-  },
-  modePillText: { fontSize: 10, fontWeight: 'bold', letterSpacing: 1 },
-  gemsBadge: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: '#FFD700',
-  },
-  gemsText: { color: '#FFD700', fontSize: 12, fontWeight: 'bold' },
   statsBar: {
     flexDirection: 'row',
     backgroundColor: COLORS.surface,
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 14,
+    borderRadius: 14,
+    padding: 10,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
     alignItems: 'center',
   },
   statItem: { flex: 1, alignItems: 'center' },
-  statValue: { color: COLORS.text, fontSize: 16, fontWeight: '900' },
-  statLabel: { color: COLORS.textSecondary, fontSize: 9, fontWeight: 'bold', letterSpacing: 1, marginTop: 2 },
-  statDivider: { width: 1, height: 32, backgroundColor: COLORS.border },
+  statValue: { color: COLORS.text, fontSize: 14, fontWeight: '900' },
+  statLabel: { color: COLORS.textSecondary, fontSize: 8, fontWeight: 'bold', letterSpacing: 0.5, marginTop: 2 },
+  statDivider: { width: 1, height: 28, backgroundColor: COLORS.border },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -504,7 +663,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     paddingHorizontal: 12,
-    marginBottom: 14,
+    marginBottom: 10,
   },
   searchIcon: { fontSize: 14, marginRight: 8 },
   searchInput: {
@@ -513,10 +672,63 @@ const styles = StyleSheet.create({
     fontSize: 14,
     paddingVertical: 10,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  helpBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary + '14',
+  },
+  helpBtnText: {
+    color: COLORS.primary,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  modeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  modeBtn: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+  },
+  modeBtnActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primary + '12',
+  },
+  modeBtnText: {
+    color: COLORS.textSecondary,
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
+  modeBtnTextActive: {
+    color: COLORS.primary,
+  },
+  modeBtnDesc: {
+    color: COLORS.textMuted,
+    fontSize: 9,
+    marginTop: 3,
+    textAlign: 'center',
+  },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
     gap: 8,
   },
   onlineDot: {
@@ -545,7 +757,7 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     alignItems: 'center',
-    paddingTop: 60,
+    paddingTop: 40,
     paddingHorizontal: 24,
   },
   emptyEmoji: { fontSize: 56, marginBottom: 16 },
@@ -560,5 +772,122 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  gemFloatBadge: {
+    position: 'absolute',
+    bottom: 80,
+    alignSelf: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderWidth: 1.5,
+    borderColor: '#FFD700',
+    zIndex: 999,
+  },
+  gemFloatText: {
+    color: '#FFD700',
+    fontWeight: '900',
+    fontSize: 22,
+    letterSpacing: 1,
+  },
+  seasonBanner: {
+    backgroundColor: COLORS.warning + '18',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.warning,
+    padding: 12,
+    marginBottom: 10,
+    alignItems: 'center',
+  },
+  seasonBannerTitle: {
+    color: COLORS.warning,
+    fontSize: 13,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  seasonBannerText: {
+    color: COLORS.accent,
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  missionsCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 12,
+    marginBottom: 10,
+  },
+  missionCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 0,
+  },
+  missionCardTitle: {
+    color: COLORS.textSecondary,
+    fontSize: 9,
+    fontWeight: 'bold',
+    letterSpacing: 2,
+  },
+  missionCardRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  missionCardCount: {
+    color: COLORS.primary,
+    fontSize: 9,
+    fontWeight: 'bold',
+  },
+  missionChevron: {
+    color: COLORS.textMuted,
+    fontSize: 9,
+  },
+  missionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 10,
+  },
+  missionInfo: {
+    flex: 1,
+  },
+  missionLabel: {
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  missionLabelDone: {
+    color: COLORS.success,
+  },
+  missionDesc: {
+    color: COLORS.textMuted,
+    fontSize: 10,
+    marginTop: 1,
+    marginBottom: 3,
+  },
+  missionBarBg: {
+    height: 4,
+    backgroundColor: COLORS.border,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  missionBarFill: {
+    height: '100%',
+    backgroundColor: COLORS.primary,
+    borderRadius: 2,
+  },
+  missionReward: {
+    color: '#FFD700',
+    fontWeight: 'bold',
+    fontSize: 12,
+    minWidth: 44,
+    textAlign: 'right',
+  },
+  missionRewardDone: {
+    color: COLORS.success,
+    textDecorationLine: 'line-through',
   },
 });

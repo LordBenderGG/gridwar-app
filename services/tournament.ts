@@ -53,6 +53,8 @@ export interface TournamentMatch {
   winner: string | null;
   loser: string | null;
   gameId: string | null;
+  startedBy?: string | null;
+  startedAt?: number | null;
 }
 
 export interface TournamentPodium {
@@ -86,7 +88,6 @@ export interface Tournament {
     third: number;
   };
   podium: TournamentPodium | null;
-  spectators: string[];
   winner: string | null;
   createdAt: any;
 }
@@ -124,13 +125,76 @@ const roundsForSize = (n: number) => Math.log2(n);
 
 // ─── Shuffle ──────────────────────────────────────────────────────────────────
 
+const randomInt = (maxExclusive: number): number => {
+  if (maxExclusive <= 1) return 0;
+
+  const cryptoObj = (globalThis as any)?.crypto;
+  if (cryptoObj?.getRandomValues) {
+    const maxUint32 = 0xffffffff;
+    const limit = maxUint32 - (maxUint32 % maxExclusive);
+    const buf = new Uint32Array(1);
+    let n = 0;
+    do {
+      cryptoObj.getRandomValues(buf);
+      n = buf[0];
+    } while (n >= limit);
+    return n % maxExclusive;
+  }
+
+  return Math.floor(Math.random() * maxExclusive);
+};
+
 const shuffle = <T>(array: T[]): T[] => {
   const arr = [...array];
   for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = randomInt(i + 1);
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr;
+};
+
+const buildSeededRound1 = (tournament: Tournament): TournamentMatch[] => {
+  const shuffledPlayers = shuffle(tournament.players);
+  const round1: TournamentMatch[] = [];
+
+  for (let i = 0; i < shuffledPlayers.length; i += 2) {
+    const p1 = shuffledPlayers[i];
+    const p2 = shuffledPlayers[i + 1];
+    if (!p1 || !p2) continue;
+    round1.push({
+      matchId: generateId(),
+      p1,
+      p2,
+      p1Username: tournament.playerUsernames[p1] || p1,
+      p2Username: tournament.playerUsernames[p2] || p2,
+      winner: null,
+      loser: null,
+      gameId: null,
+      startedBy: null,
+      startedAt: null,
+    });
+  }
+
+  return round1;
+};
+
+const ensureWaitingBracketSeededIfFull = async (tournamentId: string): Promise<void> => {
+  const tRef = doc(db, 'tournaments', tournamentId);
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(tRef);
+    if (!snap.exists()) return;
+    const t = snap.data() as Tournament;
+    if (t.status !== 'waiting') return;
+    if (t.players.length !== t.maxPlayers) return;
+
+    const round1 = t.bracket?.round1 || [];
+    if (round1.length > 0) return;
+
+    tx.update(tRef, {
+      'bracket.round1': buildSeededRound1(t),
+      currentRound: 1,
+    });
+  });
 };
 
 // ─── createTournament ─────────────────────────────────────────────────────────
@@ -189,7 +253,6 @@ export const createTournament = async (
       ? { first: globalPrizes!.first, second: globalPrizes!.second, third: globalPrizes!.third }
       : { ...LOCAL_PRIZES },
     podium: null,
-    spectators: [],
     winner: null,
     createdAt: serverTimestamp(),
   };
@@ -248,6 +311,8 @@ export const joinTournament = async (
       [`playerAvatars.${uid}`]: avatar,
     });
   }
+
+  await ensureWaitingBracketSeededIfFull(tournamentId);
 };
 
 // ─── startTournament ──────────────────────────────────────────────────────────
@@ -260,34 +325,40 @@ export const startTournament = async (tournamentId: string): Promise<void> => {
   if (tournament.status !== 'waiting') throw new Error('TOURNAMENT_ALREADY_STARTED');
   if (tournament.players.length < 4) throw new Error('NOT_ENOUGH_PLAYERS');
   if (tournament.players.length !== tournament.maxPlayers) throw new Error('TOURNAMENT_NOT_FULL');
-  if (Object.keys(tournament.bracket || {}).length > 0) throw new Error('BRACKET_ALREADY_CREATED');
+  const seededRound1 = tournament.bracket?.round1?.length
+    ? tournament.bracket.round1
+    : buildSeededRound1(tournament);
 
-  const shuffledPlayers = shuffle(tournament.players);
   const round1: TournamentMatch[] = [];
+  for (const m of seededRound1) {
+    const p1 = m.p1;
+    const p2 = m.p2;
+    if (!p1 || !p2) continue;
+    const gameId = m.gameId || generateId();
 
-  for (let i = 0; i < shuffledPlayers.length; i += 2) {
-    const p1 = shuffledPlayers[i];
-    const p2 = shuffledPlayers[i + 1];
-    const matchId = generateId();
-    const gameId = generateId();
-
-    await createGame(
-      gameId, p1, p2,
-      tournament.playerUsernames[p1],
-      tournament.playerUsernames[p2],
-      tournament.playerAvatars[p1],
-      tournament.playerAvatars[p2],
-      'tournament',
-      tournamentId
-    );
+    if (!m.gameId) {
+      await createGame(
+        gameId,
+        p1,
+        p2,
+        tournament.playerUsernames[p1],
+        tournament.playerUsernames[p2],
+        tournament.playerAvatars[p1],
+        tournament.playerAvatars[p2],
+        'tournament',
+        tournamentId
+      );
+    }
 
     round1.push({
-      matchId, p1, p2,
-      p1Username: tournament.playerUsernames[p1],
-      p2Username: tournament.playerUsernames[p2],
+      ...m,
+      p1Username: tournament.playerUsernames[p1] || m.p1Username,
+      p2Username: tournament.playerUsernames[p2] || m.p2Username,
+      gameId,
       winner: null,
       loser: null,
-      gameId,
+      startedBy: null,
+      startedAt: null,
     });
   }
 
@@ -295,6 +366,78 @@ export const startTournament = async (tournamentId: string): Promise<void> => {
     'bracket.round1': round1,
     currentRound: 1,
     status: 'active',
+  });
+
+  await syncTournamentProgress(tournamentId);
+};
+
+export const claimTournamentMatchStart = async (
+  tournamentId: string,
+  uid: string
+): Promise<{ gameId: string; startedBy: string | null; iStarted: boolean }> => {
+  const tRef = doc(db, 'tournaments', tournamentId);
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(tRef);
+    if (!snap.exists()) throw new Error('TOURNAMENT_NOT_FOUND');
+    const t = snap.data() as Tournament;
+    if (t.status !== 'active') throw new Error('TOURNAMENT_NOT_ACTIVE');
+
+    const currentRoundKey = `round${t.currentRound}`;
+    const roundKeys = [
+      currentRoundKey,
+      ...Object.keys(t.bracket || {})
+        .filter((k) => k.startsWith('round') && k !== currentRoundKey)
+        .sort((a, b) => parseInt(a.replace('round', ''), 10) - parseInt(b.replace('round', ''), 10)),
+    ];
+
+    for (const roundKey of roundKeys) {
+      const matches = [...(t.bracket?.[roundKey] || [])];
+      const idx = matches.findIndex((m) => !m.winner && (m.p1 === uid || m.p2 === uid));
+      if (idx === -1) continue;
+
+      const match = matches[idx];
+      if (!match.gameId) throw new Error('NO_MATCH_GAME');
+
+      const currentStarter = (match.startedBy ?? null) as string | null;
+      if (!currentStarter) {
+        const updatedMatch: TournamentMatch = {
+          ...match,
+          startedBy: uid,
+          startedAt: Date.now(),
+        };
+        matches[idx] = updatedMatch;
+        tx.update(tRef, { [`bracket.${roundKey}`]: matches });
+        return { gameId: match.gameId, startedBy: uid, iStarted: true };
+      }
+
+      return {
+        gameId: match.gameId,
+        startedBy: currentStarter,
+        iStarted: currentStarter === uid,
+      };
+    }
+
+    const third = t.thirdPlaceMatch;
+    if (third && !third.winner && (third.p1 === uid || third.p2 === uid)) {
+      if (!third.gameId) throw new Error('NO_MATCH_GAME');
+      const currentStarter = (third.startedBy ?? null) as string | null;
+      if (!currentStarter) {
+        const updatedThird: TournamentMatch = {
+          ...third,
+          startedBy: uid,
+          startedAt: Date.now(),
+        };
+        tx.update(tRef, { thirdPlaceMatch: updatedThird });
+        return { gameId: third.gameId, startedBy: uid, iStarted: true };
+      }
+      return {
+        gameId: third.gameId,
+        startedBy: currentStarter,
+        iStarted: currentStarter === uid,
+      };
+    }
+
+    throw new Error('NO_ACTIVE_MATCH');
   });
 };
 
@@ -355,7 +498,9 @@ export const syncTournamentProgress = async (tournamentId: string): Promise<void
     for (let i = 0; i < nextMatches.length; i++) {
       const m = nextMatches[i];
       if (m.winner || !m.gameId) continue;
-      const gameData = await getGameData(m.gameId);
+
+      let gameData = await getGameData(m.gameId);
+
       if (!gameData || gameData.status !== 'finished' || !gameData.winner) continue;
 
       const winner = gameData.winner as string;
@@ -371,7 +516,8 @@ export const syncTournamentProgress = async (tournamentId: string): Promise<void
   }
 
   if (thirdPlaceMatch && !thirdPlaceMatch.winner && thirdPlaceMatch.gameId) {
-    const thirdGameData = await getGameData(thirdPlaceMatch.gameId);
+    let thirdGameData = await getGameData(thirdPlaceMatch.gameId);
+
     if (thirdGameData && thirdGameData.status === 'finished' && thirdGameData.winner) {
       const winner = thirdGameData.winner as string;
       const loser = winner === thirdPlaceMatch.p1 ? thirdPlaceMatch.p2 : thirdPlaceMatch.p1;
@@ -440,7 +586,7 @@ export const syncTournamentProgress = async (tournamentId: string): Promise<void
   if (tournament.bracket?.[`round${nextRound}`]?.length) return;
 
   // Semifinales -> final + 3er puesto
-  if (winners.length === 2) {
+    if (winners.length === 2) {
     const finalGameId = generateId();
     await createGame(
       finalGameId,
@@ -464,7 +610,6 @@ export const syncTournamentProgress = async (tournamentId: string): Promise<void
       loser: null,
       gameId: finalGameId,
     };
-
     let newThirdPlaceMatch: TournamentMatch | null = tournament.thirdPlaceMatch;
     if (!newThirdPlaceMatch && losers[0] && losers[1] && losers[0] !== losers[1]) {
       const thirdGameId = generateId();
@@ -496,6 +641,7 @@ export const syncTournamentProgress = async (tournamentId: string): Promise<void
       thirdPlaceMatch: newThirdPlaceMatch,
       currentRound: nextRound,
     });
+    await syncTournamentProgress(tournamentId);
     return;
   }
 
@@ -536,6 +682,7 @@ export const syncTournamentProgress = async (tournamentId: string): Promise<void
       [`bracket.round${nextRound}`]: nextMatches,
       currentRound: nextRound,
     });
+    await syncTournamentProgress(tournamentId);
   }
 };
 
@@ -759,22 +906,14 @@ async function distributePrizes(
   addCreatorRoyaltySafe(totalPrizes, { source: 'tournament_prize', eventId: tournamentId }).catch(() => {});
 }
 
-// ─── addSpectator ─────────────────────────────────────────────────────────────
-
-export const addSpectator = async (tournamentId: string, uid: string): Promise<void> => {
-  await updateDoc(doc(db, 'tournaments', tournamentId), {
-    spectators: arrayUnion(uid),
-  });
-};
-
 // ─── subscribeToTournament ────────────────────────────────────────────────────
 
 export const subscribeToTournament = (
   tournamentId: string,
-  callback: (t: Tournament) => void
+  callback: (t: Tournament | null) => void
 ): (() => void) => {
   return onSnapshot(doc(db, 'tournaments', tournamentId), (snap) => {
-    if (snap.exists()) callback(snap.data() as Tournament);
+    callback(snap.exists() ? (snap.data() as Tournament) : null);
   });
 };
 
@@ -791,11 +930,34 @@ export const getActiveTournaments = async (): Promise<Tournament[]> => {
   return snap.docs.map((d) => d.data() as Tournament);
 };
 
+export const subscribeToActiveTournaments = (
+  callback: (tournaments: Tournament[]) => void
+): (() => void) => {
+  const q = query(
+    collection(db, 'tournaments'),
+    where('status', 'in', ['waiting', 'active']),
+    orderBy('createdAt', 'desc'),
+    limit(50)
+  );
+
+  return onSnapshot(q, (snap) => {
+    callback(snap.docs.map((d) => d.data() as Tournament));
+  });
+};
+
 // ─── getActiveGlobalTournamentId ─────────────────────────────────────────────
 
 export const getActiveGlobalTournamentId = async (): Promise<string | null> => {
   const snap = await getDoc(doc(db, 'meta', 'tournaments'));
   return snap.exists() ? (snap.data().activeGlobalTournamentId ?? null) : null;
+};
+
+export const subscribeToActiveGlobalTournamentId = (
+  callback: (id: string | null) => void
+): (() => void) => {
+  return onSnapshot(doc(db, 'meta', 'tournaments'), (snap) => {
+    callback(snap.exists() ? (snap.data().activeGlobalTournamentId ?? null) : null);
+  });
 };
 
 // ─── Helpers de premio para mostrar en UI ────────────────────────────────────
@@ -823,44 +985,3 @@ export const getTournamentPrizeInfo = (type: 'global' | 'local', maxPlayers: 4 |
 };
 
 export { TOURNAMENT_PASS_COST, ENTRY_FEE_GLOBAL };
-
-// ─── fillWithBots (SOLO local) ────────────────────────────────────────────────
-
-/**
- * Rellena los espacios vacíos de un torneo local con bots de nivel medio.
- * Solo disponible para torneos locales — los bots ganados van a la economía.
- * Visible para el creador después de 5 minutos de espera.
- */
-export const fillWithBots = async (
-  tournamentId: string,
-  creatorUid: string
-): Promise<void> => {
-  const snap = await getDoc(doc(db, 'tournaments', tournamentId));
-  if (!snap.exists()) return;
-  const t = snap.data() as Tournament;
-
-  if (t.type !== 'local') throw new Error('BOTS_ONLY_LOCAL');
-  if (t.status !== 'waiting') throw new Error('TOURNAMENT_STARTED');
-  if (t.createdBy !== creatorUid) throw new Error('NOT_CREATOR');
-
-  const slotsNeeded = t.maxPlayers - t.players.length;
-  if (slotsNeeded <= 0) return;
-
-  const botUpdates: Record<string, any> = {};
-  const newPlayers = [...t.players];
-
-  for (let i = 0; i < slotsNeeded; i++) {
-    const botUid = `bot_${i + 1}_${tournamentId}`;
-    const botUsername = `Bot ${i + 1}`;
-    const botAvatar = `avatar_${((i % 8) + 1)}`;
-
-    newPlayers.push(botUid);
-    botUpdates[`playerUsernames.${botUid}`] = botUsername;
-    botUpdates[`playerAvatars.${botUid}`] = botAvatar;
-  }
-
-  await updateDoc(doc(db, 'tournaments', tournamentId), {
-    players: newPlayers,
-    ...botUpdates,
-  });
-};

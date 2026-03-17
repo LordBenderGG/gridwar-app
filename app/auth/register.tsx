@@ -1,187 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ScrollView, Alert, ActivityIndicator,
   KeyboardAvoidingView, Platform, Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
 import { registerUser, uploadProfilePhoto, isUsernameTaken } from '../../services/auth';
 import { useAuthStore } from '../../store/authStore';
 import AvatarPicker, { AVATAR_LIST } from '../../components/AvatarPicker';
-import { COLORS } from '../../constants/theme';
+import { useColors } from '../../hooks/useColors';
+import '../../i18n';
 
-export default function RegisterScreen() {
-  const router = useRouter();
-  const { setUser, updateUser } = useAuthStore();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [username, setUsername] = useState('');
-  const [selectedAvatar, setSelectedAvatar] = useState(AVATAR_LIST[0]);
-  const [photoUri, setPhotoUri] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState<'data' | 'avatar'>('data');
-
-  const pickPhoto = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert(
-        'Permiso requerido',
-        'Necesitamos acceso a tu galería para que puedas subir tu foto.',
-        [{ text: 'Entendido' }]
-      );
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 1, // La optimización la hace uploadProfilePhoto con expo-image-manipulator
-    });
-    if (!result.canceled) {
-      setPhotoUri(result.assets[0].uri);
-      setSelectedAvatar('');
-    }
-  };
-
-  const handleNextStep = async () => {
-    if (!email.trim() || !password.trim() || !username.trim()) {
-      Alert.alert('Error', 'Completa todos los campos');
-      return;
-    }
-    if (username.trim().length < 3) {
-      Alert.alert('Error', 'El username debe tener al menos 3 caracteres');
-      return;
-    }
-    if (password.length < 6) {
-      Alert.alert('Error', 'La contraseña debe tener al menos 6 caracteres');
-      return;
-    }
-    setLoading(true);
-    try {
-      const taken = await isUsernameTaken(username.trim());
-      if (taken) {
-        Alert.alert('Nombre en uso', 'Ese nombre de usuario ya existe. Elige otro.');
-        return;
-      }
-      setStep('avatar');
-    } catch {
-      Alert.alert('Error', 'No se pudo verificar el nombre de usuario. Intenta de nuevo.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRegister = async () => {
-    setLoading(true);
-    try {
-      const profile = await registerUser(
-        email.trim(),
-        password,
-        username.trim(),
-        selectedAvatar || 'avatar_1',
-        null
-      );
-      // Optimizar y guardar foto en background — no bloquea el acceso a la app
-      if (photoUri) {
-        uploadProfilePhoto(profile.uid, photoUri)
-          .then((photoURL) => updateUser({ photoURL }))
-          .catch(() => {
-            // Fallo silencioso: el usuario puede cambiar la foto después desde perfil
-          });
-      }
-      setUser(profile);
-      router.replace('/(tabs)/home');
-    } catch (e: any) {
-      Alert.alert('Error', e.message || 'Error al registrarse');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (step === 'avatar') {
-    return (
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.logo}>TIKTAK</Text>
-        <Text style={styles.sectionTitle}>Elige tu avatar</Text>
-
-        <TouchableOpacity style={styles.photoBtn} onPress={pickPhoto}>
-          {photoUri ? (
-            <Image source={{ uri: photoUri }} style={styles.photoPreview} />
-          ) : (
-            <Text style={styles.photoBtnText}>📷 Subir foto propia</Text>
-          )}
-        </TouchableOpacity>
-
-        <Text style={styles.orText}>— o elige un avatar —</Text>
-        <AvatarPicker selected={selectedAvatar} onSelect={(a) => { setSelectedAvatar(a); setPhotoUri(null); }} />
-
-        <TouchableOpacity style={styles.btn} onPress={handleRegister} disabled={loading}>
-          {loading ? (
-            <ActivityIndicator color={COLORS.background} />
-          ) : (
-            <Text style={styles.btnText}>¡CREAR CUENTA!</Text>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => setStep('data')}>
-          <Text style={styles.link}>← Volver</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    );
-  }
-
-  return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <Text style={styles.logo}>TIKTAK</Text>
-        <Text style={styles.subtitle}>Crea tu cuenta</Text>
-
-        <View style={styles.form}>
-          <TextInput
-            style={styles.input}
-            placeholder="Nombre de usuario"
-            placeholderTextColor={COLORS.textSecondary}
-            value={username}
-            onChangeText={setUsername}
-            maxLength={20}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Correo electrónico"
-            placeholderTextColor={COLORS.textSecondary}
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Contraseña (mín. 6 caracteres)"
-            placeholderTextColor={COLORS.textSecondary}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
-
-          <TouchableOpacity style={styles.btn} onPress={handleNextStep} disabled={loading}>
-            {loading ? (
-              <ActivityIndicator color={COLORS.background} />
-            ) : (
-              <Text style={styles.btnText}>SIGUIENTE → Elegir avatar</Text>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity onPress={() => router.back()}>
-            <Text style={styles.link}>¿Ya tienes cuenta? Inicia sesión</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
-  );
-}
-
-const styles = StyleSheet.create({
+const createStyles = (COLORS: any) => StyleSheet.create({
   flex: { flex: 1, backgroundColor: COLORS.background },
   container: {
     flexGrow: 1,
@@ -272,3 +104,175 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 });
+
+export default function RegisterScreen() {
+  const router = useRouter();
+  const { t } = useTranslation();
+  const { setUser, updateUser } = useAuthStore();
+  const COLORS = useColors();
+  const styles = useMemo(() => createStyles(COLORS), [COLORS]);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('');
+  const [selectedAvatar, setSelectedAvatar] = useState(AVATAR_LIST[0]);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState<'data' | 'avatar'>('data');
+
+  const pickPhoto = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(t('auth.photoPermission'), t('auth.photoPermissionMsg'), [{ text: t('auth.understood') }]);
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 1,
+    });
+    if (!result.canceled) {
+      setPhotoUri(result.assets[0].uri);
+      setSelectedAvatar('');
+    }
+  };
+
+  const handleNextStep = () => {
+    if (!email.trim() || !password.trim() || !username.trim()) {
+      Alert.alert(t('auth.fieldRequired'), t('auth.fieldRequiredMsg'));
+      return;
+    }
+    if (username.trim().length < 3) {
+      Alert.alert(t('auth.fieldRequired'), t('auth.usernameTooShort'));
+      return;
+    }
+    if (password.length < 6) {
+      Alert.alert(t('auth.fieldRequired'), t('auth.passwordTooShort'));
+      return;
+    }
+    setStep('avatar');
+  };
+
+  const handleRegister = async () => {
+    setLoading(true);
+    try {
+      const profile = await registerUser(
+        email.trim(),
+        password,
+        username.trim(),
+        selectedAvatar || 'avatar_1',
+        null
+      );
+      // Optimizar y guardar foto en background — no bloquea el acceso a la app
+      if (photoUri) {
+        uploadProfilePhoto(profile.uid, photoUri)
+          .then((photoURL) => updateUser({ photoURL }))
+          .catch(() => {
+            // Fallo silencioso: el usuario puede cambiar la foto después desde perfil
+          });
+      }
+      setUser(profile);
+      router.replace('/(tabs)/home');
+    } catch (e: any) {
+      const msg = e.message || '';
+      if (msg.includes('ya está en uso') || msg.includes('already in use')) {
+        Alert.alert(t('auth.usernameTaken'), t('auth.usernameTakenMsg'));
+      } else {
+        Alert.alert('Error', msg || t('auth.registerError'));
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (step === 'avatar') {
+    return (
+      <ScrollView contentContainerStyle={styles.container}>
+        <Text style={styles.logo}>
+          <Text style={{ color: '#FFFFFF' }}>GRID</Text>
+          <Text style={{ color: '#FF3B30' }}>WAR</Text>
+        </Text>
+        <Text style={styles.sectionTitle}>{t('auth.chooseAvatar')}</Text>
+
+        <TouchableOpacity style={styles.photoBtn} onPress={pickPhoto}>
+          {photoUri ? (
+            <Image source={{ uri: photoUri }} style={styles.photoPreview} />
+          ) : (
+            <Text style={styles.photoBtnText}>{t('auth.uploadPhoto')}</Text>
+          )}
+        </TouchableOpacity>
+
+        <Text style={styles.orText}>{t('auth.orChooseAvatar')}</Text>
+        <AvatarPicker
+          selected={selectedAvatar}
+          useEmoji
+          onSelect={(a) => { setSelectedAvatar(a); setPhotoUri(null); }}
+        />
+
+        <TouchableOpacity style={styles.btn} onPress={handleRegister} disabled={loading}>
+          {loading ? (
+            <ActivityIndicator color={COLORS.background} />
+          ) : (
+            <Text style={styles.btnText}>{t('auth.createAccount')}</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => setStep('data')}>
+          <Text style={styles.link}>{t('auth.back')}</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    );
+  }
+
+  return (
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <Text style={styles.logo}>
+          <Text style={{ color: '#FFFFFF' }}>GRID</Text>
+          <Text style={{ color: '#FF3B30' }}>WAR</Text>
+        </Text>
+        <Text style={styles.subtitle}>{t('auth.subtitle')}</Text>
+
+        <View style={styles.form}>
+          <TextInput
+            style={styles.input}
+            placeholder={t('auth.username')}
+            placeholderTextColor={COLORS.textSecondary}
+            value={username}
+            onChangeText={setUsername}
+            maxLength={20}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder={t('auth.email')}
+            placeholderTextColor={COLORS.textSecondary}
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+          <TextInput
+            style={styles.input}
+            placeholder={t('auth.passwordPlaceholder')}
+            placeholderTextColor={COLORS.textSecondary}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
+
+          <TouchableOpacity style={styles.btn} onPress={handleNextStep} disabled={loading}>
+            {loading ? (
+              <ActivityIndicator color={COLORS.background} />
+            ) : (
+              <Text style={styles.btnText}>{t('auth.nextAvatar')}</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => router.back()}>
+            <Text style={styles.link}>{t('auth.hasAccount')}</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}

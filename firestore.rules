@@ -2,32 +2,55 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── USUARIOS ─────────────────────────────────────────────────────────────
-    // Lectura pública para cualquier auth (home, clasificación, salón)
-    // Escritura: el dueño puede escribir su propio doc.
-    // TAMBIÉN cualquier auth puede actualizar campos de otros usuarios:
-    // esto es necesario para que el sistema cambie status/points/rank del rival
-    // al terminar una partida o procesar un reto (finishMatch, penalizeNoAccept,
-    // sendChallenge, expireChallenge, etc.)
+    // Campos que un usuario ajeno (autenticado) puede actualizar en nombre del juego:
+    // resultados de partida, estado en-línea, racha y gemas ganadas como recompensa.
+    // NO incluye campos de perfil (username, avatar, photoURL) ni inventario de tienda.
+    function onlyGameFields(request, resource) {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let allowed = [
+        'points', 'gems', 'wins', 'losses', 'gamesPlayed', 'rank',
+        'status', 'currentWinStreak', 'maxWinStreak',
+        'challengeBlockedUntil',
+        'xp', 'level'
+      ].toSet();
+      return changed.hasOnly(allowed);
+    }
+
     match /users/{userId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null && request.auth.uid == userId;
-      allow update: if request.auth != null;
+
+      // El propio usuario puede actualizar cualquier campo de su perfil.
+      // Un usuario ajeno (autenticado) solo puede actualizar los campos
+      // estrictamente relacionados con resultados de partida — no puede
+      // tocar nombre, avatar, fotos, gemas ni inventario.
+      allow update: if request.auth != null && (
+        request.auth.uid == userId ||
+        onlyGameFields(request, resource)
+      );
       allow delete: if false;
     }
 
-    // Historial de partidas — solo el dueño puede leer/escribir
-    // (el sistema escribe con las credenciales del usuario activo en la sesión)
     match /users/{userId}/history/{gameId} {
       allow read: if request.auth != null && request.auth.uid == userId;
       allow write: if request.auth != null;
     }
 
-    // ── RETOS ────────────────────────────────────────────────────────────────
-    // La query subscribeToIncomingChallenges usa where('to','==',uid) +
-    // where('status','==','pending'). Firestore evalúa las reglas antes de
-    // aplicar el filtro, por lo que la regla de lectura debe ser permisiva
-    // para cualquier usuario autenticado (no solo from/to).
+    match /users/{userId}/dailyPurchases/{purchaseId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /users/{userId}/achievements/{achievementId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /users/{userId}/dailyMissions/{date} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
     match /challenges/{challengeId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null;
@@ -35,8 +58,6 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ── PARTIDAS ─────────────────────────────────────────────────────────────
-    // Ambos jugadores y el sistema necesitan leer y actualizar el doc de partida.
     match /games/{gameId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null;
@@ -44,15 +65,34 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ── TORNEOS ──────────────────────────────────────────────────────────────
     match /tournaments/{tournamentId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null;
     }
 
-    // ── CATCH-ALL: bloquear todo lo demás ────────────────────────────────────
+    match /economy/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    match /seasons/{docId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    match /seasons/{seasonId}/leaderboard/{uid} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    match /meta/{docId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
+
   }
 }

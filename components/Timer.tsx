@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -8,20 +8,52 @@ import Animated, {
   withRepeat,
   interpolateColor,
 } from 'react-native-reanimated';
-import { COLORS, TIMER_TOTAL } from '../constants/theme';
+import { useColors } from '../hooks/useColors';
+import { TIMER_TOTAL } from '../constants/theme';
 
 interface TimerProps {
   secondsLeft: number;
   isMyTurn: boolean;
   turboActive?: boolean;
+  maxTime?: number;
 }
 
-const Timer: React.FC<TimerProps> = ({ secondsLeft, isMyTurn, turboActive }) => {
+const createStyles = (COLORS: any) => StyleSheet.create({
+  container: {
+    alignItems: 'center',
+    width: '100%',
+  },
+  track: {
+    width: '100%',
+    height: 8,
+    backgroundColor: COLORS.border,
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  bar: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  time: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  timeUrgent: {
+    color: COLORS.danger,
+    fontSize: 24,
+  },
+});
+
+const Timer: React.FC<TimerProps> = ({ secondsLeft, isMyTurn, turboActive, maxTime = TIMER_TOTAL }) => {
+  const COLORS = useColors();
+  const styles = useMemo(() => createStyles(COLORS), [COLORS]);
   const progress = useSharedValue(1);
   const pulse = useSharedValue(1);
 
   useEffect(() => {
-    const ratio = secondsLeft / TIMER_TOTAL;
+    const ratio = secondsLeft / maxTime;
     progress.value = withTiming(ratio, { duration: 1000 });
 
     if (secondsLeft <= 5 && isMyTurn) {
@@ -64,33 +96,5 @@ const Timer: React.FC<TimerProps> = ({ secondsLeft, isMyTurn, turboActive }) => 
     </Animated.View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    alignItems: 'center',
-    width: '100%',
-  },
-  track: {
-    width: '100%',
-    height: 8,
-    backgroundColor: COLORS.border,
-    borderRadius: 4,
-    overflow: 'hidden',
-    marginBottom: 4,
-  },
-  bar: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  time: {
-    color: COLORS.text,
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  timeUrgent: {
-    color: COLORS.danger,
-    fontSize: 24,
-  },
-});
 
 export default Timer;

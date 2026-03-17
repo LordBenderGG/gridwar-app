@@ -1,0 +1,21 @@
+{"users": [
+{
+  "localId": "9edQhK3CTONWi9BQxZb3NhQaczV2",
+  "email": "goku@kamehouse.net",
+  "emailVerified": false,
+  "passwordHash": "lV6EcIAYf00G9S236j6mwUmnbeL+292t7N14PnzNELEchFDNHSyLSzST5YQHz98dxgVIVsGwMuRdJuz2eWJ+Gw==",
+  "salt": "pizdQ2xxia1cIg==",
+  "lastSignedInAt": "1773655264271",
+  "createdAt": "1773655264271",
+  "providerUserInfo": []
+},
+{
+  "localId": "HBoWGX1SoUNEtcLVAhUEDblj1NJ2",
+  "email": "carlosbetancur1205@gmail.com",
+  "emailVerified": false,
+  "passwordHash": "C64uHY63x88uWPLwyj4gKJ0WAmYXn0/sMmfhsDPAYT8vdUsbN2alprbyQ1Ud6ve7xoH9RdT79LOeoxl8JJ/h8g==",
+  "salt": "TJUFQrVsDyFBRA==",
+  "lastSignedInAt": "1773655184366",
+  "createdAt": "1773655184366",
+  "providerUserInfo": []
+}]}

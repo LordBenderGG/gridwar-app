@@ -1,72 +1,16 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { COLORS } from '../../constants/theme';
-import { getRandomMessage, VICTORY_MESSAGES_ES, DEFEAT_MESSAGES_ES } from '../../constants/messages';
+import { useTranslation } from 'react-i18next';
+import { doc, getDoc } from 'firebase/firestore';
+import { useColors } from '../../hooks/useColors';
+import { POINTS_WIN, POINTS_LOSS } from '../../constants/theme';
+import { getUserProfile } from '../../services/auth';
+import { db } from '../../services/firebase';
+import { useAuthStore } from '../../store/authStore';
+import '../../i18n';
 
-export default function ResultadoScreen() {
-  const { gameId, winnerId, myUid } = useLocalSearchParams<{
-    gameId: string;
-    winnerId: string;
-    myUid: string;
-  }>();
-  const router = useRouter();
-  const scaleAnim = useRef(new Animated.Value(0)).current;
-  const shakeAnim = useRef(new Animated.Value(0)).current;
-
-  const isWinner = winnerId === myUid;
-
-  useEffect(() => {
-    if (isWinner) {
-      Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 50 }).start();
-    } else {
-      Animated.sequence([
-        Animated.timing(shakeAnim, { toValue: 15, duration: 80, useNativeDriver: true }),
-        Animated.timing(shakeAnim, { toValue: -15, duration: 80, useNativeDriver: true }),
-        Animated.timing(shakeAnim, { toValue: 10, duration: 80, useNativeDriver: true }),
-        Animated.timing(shakeAnim, { toValue: -10, duration: 80, useNativeDriver: true }),
-        Animated.timing(shakeAnim, { toValue: 0, duration: 80, useNativeDriver: true }),
-      ]).start();
-      Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true }).start();
-    }
-  }, []);
-
-  const message = isWinner
-    ? getRandomMessage(VICTORY_MESSAGES_ES)
-    : getRandomMessage(DEFEAT_MESSAGES_ES);
-
-  return (
-    <Animated.View
-      style={[
-        styles.container,
-        isWinner ? styles.winContainer : styles.lossContainer,
-        { transform: [{ translateX: shakeAnim }] },
-      ]}
-    >
-      <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-        <Text style={styles.emoji}>{isWinner ? '🏆' : '💀'}</Text>
-        <Text style={[styles.title, isWinner ? styles.winTitle : styles.lossTitle]}>
-          {message}
-        </Text>
-
-        <View style={styles.pointsBox}>
-          <Text style={[styles.points, isWinner ? styles.winPoints : styles.lossPoints]}>
-            {isWinner ? '+100 pts · +🎯' : '-30 pts'}
-          </Text>
-          {!isWinner && (
-            <Text style={styles.blockedText}>⏳ Bloqueado para retar durante 3 horas</Text>
-          )}
-        </View>
-      </Animated.View>
-
-      <TouchableOpacity style={styles.homeBtn} onPress={() => router.replace('/(tabs)/home')}>
-        <Text style={styles.homeBtnText}>Ir al Inicio</Text>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-}
-
-const styles = StyleSheet.create({
+const createStyles = (COLORS: any) => StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 28 },
   winContainer: { backgroundColor: '#0A1A0A' },
   lossContainer: { backgroundColor: '#1A0A0A' },
@@ -85,4 +29,202 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.border,
   },
   homeBtnText: { color: COLORS.text, fontWeight: 'bold', fontSize: 15 },
+  tournamentBtn: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  tournamentBtnText: { color: COLORS.primary, fontWeight: 'bold', fontSize: 14 },
+  autoBackText: {
+    marginTop: 10,
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    textAlign: 'center',
+  },
 });
+
+export default function ResultadoScreen() {
+  const { gameId, winnerId, myUid } = useLocalSearchParams<{
+    gameId: string;
+    winnerId: string;
+    myUid: string;
+  }>();
+  const router = useRouter();
+  const { t } = useTranslation();
+  const { user, setUser } = useAuthStore();
+  const COLORS = useColors();
+  const styles = useMemo(() => createStyles(COLORS), [COLORS]);
+  const scaleAnim = useRef(new Animated.Value(0)).current;
+  const shakeAnim = useRef(new Animated.Value(0)).current;
+  const [pointsDelta, setPointsDelta] = useState<number | null>(null);
+  const [gemsDelta, setGemsDelta] = useState<number | null>(null);
+  const [tournamentId, setTournamentId] = useState<string | null>(null);
+  const [isLocalTournamentMatch, setIsLocalTournamentMatch] = useState(false);
+  const [loserScoreAtEnd, setLoserScoreAtEnd] = useState<number | null>(null);
+
+  const isWinner = winnerId === myUid;
+
+  useEffect(() => {
+    if (!gameId) return;
+    getDoc(doc(db, 'games', gameId)).then((snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data() as any;
+      const p1 = data.player1 as string | undefined;
+      const p2 = data.player2 as string | undefined;
+      const loserUid = winnerId === p1 ? p2 : p1;
+      if (loserUid && data?.score) {
+        setLoserScoreAtEnd(Number(data.score[loserUid] ?? 0));
+      }
+      if (data.type === 'tournament' && data.tournamentId) {
+        setTournamentId(data.tournamentId);
+        getDoc(doc(db, 'tournaments', data.tournamentId)).then((tSnap) => {
+          if (!tSnap.exists()) return;
+          const tData = tSnap.data() as any;
+          setIsLocalTournamentMatch(tData?.type === 'local');
+        }).catch(() => {});
+      }
+    }).catch(() => {});
+  }, [gameId]);
+
+  useEffect(() => {
+    if (!tournamentId) return;
+    const timer = setTimeout(() => {
+      router.replace(`/tournament/${tournamentId}`);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [tournamentId, router]);
+
+  useEffect(() => {
+    // Capturar puntos antes de recargar para calcular el delta real
+    const pointsBefore = user?.points ?? null;
+    const gemsBefore = user?.gems ?? null;
+
+    // Recargar perfil actualizado desde Firestore (puntos, gemas, rango)
+    if (myUid) {
+      getUserProfile(myUid).then((profile) => {
+        if (profile) {
+          setUser(profile);
+          if (pointsBefore !== null) {
+            const delta = profile.points - pointsBefore;
+            setPointsDelta(delta);
+
+            // Safety net: si ganó pero delta es 0, los puntos aún no se escribieron.
+            // Reintentar después de 1.5s para dar tiempo a finishMatch.
+            if (delta === 0 && isWinner) {
+              setTimeout(() => {
+                getUserProfile(myUid).then((retryProfile) => {
+                  if (retryProfile) {
+                    setUser(retryProfile);
+                    if (pointsBefore !== null) {
+                      setPointsDelta(retryProfile.points - pointsBefore);
+                    }
+                    if (gemsBefore !== null) {
+                      setGemsDelta(retryProfile.gems - gemsBefore);
+                    }
+                  }
+                }).catch(() => {});
+              }, 1500);
+            }
+          }
+          if (gemsBefore !== null) {
+            setGemsDelta(profile.gems - gemsBefore);
+          }
+        }
+      }).catch(() => { /* ignorar error de red */ });
+    }
+
+    if (isWinner) {
+      Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 50 }).start();
+    } else {
+      Animated.sequence([
+        Animated.timing(shakeAnim, { toValue: 15, duration: 80, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: -15, duration: 80, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: 10, duration: 80, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: -10, duration: 80, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: 0, duration: 80, useNativeDriver: true }),
+      ]).start();
+      Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true }).start();
+    }
+  }, []);
+
+  // Seleccionar mensaje aleatorio del array i18n
+  const messages: string[] = isWinner
+    ? (t('result.victoryMessages', { returnObjects: true }) as string[])
+    : (t('result.defeatMessages', { returnObjects: true }) as string[]);
+  const message = messages[Math.floor(Math.random() * messages.length)];
+
+  const expectedGemsDelta = useMemo(() => {
+    if (!isWinner) return -5;
+    if (loserScoreAtEnd === null) return 15;
+    return loserScoreAtEnd === 0 ? 20 : 15;
+  }, [isWinner, loserScoreAtEnd]);
+
+  const displayedGemsDelta = useMemo(() => {
+    if (gemsDelta === null) return null;
+    if (gemsDelta !== 0) return gemsDelta;
+    return expectedGemsDelta;
+  }, [gemsDelta, expectedGemsDelta]);
+
+  const displayedPointsDelta = useMemo(() => {
+    if (isLocalTournamentMatch) return 0;
+    if (pointsDelta === null) return isWinner ? POINTS_WIN : POINTS_LOSS;
+    if (pointsDelta !== 0) return pointsDelta;
+    return isWinner ? POINTS_WIN : POINTS_LOSS;
+  }, [isLocalTournamentMatch, pointsDelta, isWinner]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.container,
+        isWinner ? styles.winContainer : styles.lossContainer,
+        { transform: [{ translateX: shakeAnim }] },
+      ]}
+    >
+      <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+        <Text style={styles.emoji}>{isWinner ? '🏆' : '💀'}</Text>
+        <Text style={[styles.title, isWinner ? styles.winTitle : styles.lossTitle]}>
+          {message}
+        </Text>
+
+        <View style={styles.pointsBox}>
+          <Text style={[styles.points, isWinner ? styles.winPoints : styles.lossPoints]}>
+            {displayedGemsDelta !== null
+              ? (displayedGemsDelta > 0 ? `💎 +${displayedGemsDelta}` : displayedGemsDelta < 0 ? `💎 ${displayedGemsDelta}` : '💎 0')
+              : '💎 ...'}
+          </Text>
+          <Text style={styles.blockedText}>
+            {isLocalTournamentMatch
+              ? t('result.noPointsChange', { defaultValue: 'Sin cambios de puntos' })
+              : (displayedPointsDelta > 0
+                  ? t('result.pointsEarned', { points: displayedPointsDelta })
+                  : displayedPointsDelta < 0
+                    ? t('result.pointsLost', { points: Math.abs(displayedPointsDelta) })
+                    : t('result.noPointsChange', { defaultValue: 'Sin cambios de puntos' }))}
+          </Text>
+          {!isWinner && (
+            <Text style={styles.blockedText}>{t('result.blocked')}</Text>
+          )}
+        </View>
+      </Animated.View>
+
+      <TouchableOpacity style={styles.homeBtn} onPress={() => router.replace('/(tabs)/home')}>
+        <Text style={styles.homeBtnText}>{t('result.goHome')}</Text>
+      </TouchableOpacity>
+
+      {tournamentId && (
+        <>
+          <TouchableOpacity
+            style={styles.tournamentBtn}
+            onPress={() => router.replace(`/tournament/${tournamentId}`)}
+          >
+            <Text style={styles.tournamentBtnText}>Volver al torneo</Text>
+          </TouchableOpacity>
+          <Text style={styles.autoBackText}>Volviendo al torneo automaticamente...</Text>
+        </>
+      )}
+    </Animated.View>
+  );
+}

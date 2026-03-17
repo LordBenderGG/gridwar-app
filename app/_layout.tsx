@@ -1,56 +1,87 @@
 import '../i18n';
 import React, { useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
-import { onAuthChanged } from '../services/auth';
+import { useRouter } from 'expo-router';
+import { onAuthChanged, normalizeUserProfile, normalizeWildcardInventory, ensureUserProfile } from '../services/auth';
 import { useAuthStore } from '../store/authStore';
-import { COLORS } from '../constants/theme';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { useThemeStore } from '../store/themeStore';
+import { DARK_COLORS, LIGHT_COLORS } from '../constants/theme';
+import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { UserProfile } from '../services/auth';
 import { registerPresence } from '../services/presence';
-
-async function requestPushPermissions() {
-  const { status } = await Notifications.requestPermissionsAsync();
-  if (status !== 'granted') return;
-  // Token disponible para uso futuro con FCM
-}
+import { preloadSounds, unloadSounds } from '../services/sound';
+import { registerPushToken, scheduleDailyBonusReminder } from '../services/notifications';
 
 export default function RootLayout() {
   const { setUser, setLoading } = useAuthStore();
+  const isDark = useThemeStore((s) => s.isDark);
+  const COLORS = isDark ? DARK_COLORS : LIGHT_COLORS;
   const profileUnsubRef = useRef<(() => void) | null>(null);
-  // Función de cleanup de presencia (marca offline al cerrar sesión o al desmontar)
   const presenceCleanupRef = useRef<(() => void) | null>(null);
+  const currentUidRef = useRef<string | null>(null);
+  const router = useRouter();
+
+  // Manejar navegación al tocar notificación
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as any;
+      if (data?.type === 'challenge') {
+        // Navegar al home donde está el modal de reto
+        router.replace('/(tabs)/home');
+      } else if (data?.type === 'daily_bonus') {
+        router.replace('/(tabs)/home');
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
-    requestPushPermissions();
+    preloadSounds();
 
     const unsub = onAuthChanged((firebaseUser) => {
-      // Cancelar suscripción anterior si existía
       if (profileUnsubRef.current) {
         profileUnsubRef.current();
         profileUnsubRef.current = null;
       }
-      // Limpiar presencia anterior si existía
       if (presenceCleanupRef.current) {
         presenceCleanupRef.current();
         presenceCleanupRef.current = null;
       }
 
       if (firebaseUser) {
-        // Registrar presencia online — onDisconnect de RTDB maneja el offline automáticamente
+        currentUidRef.current = firebaseUser.uid;
         presenceCleanupRef.current = registerPresence(firebaseUser.uid);
 
-        // Suscripción en tiempo real al perfil del usuario
-        // Esto garantiza que user.status, points, rank, etc. siempre estén actualizados
+        // Registrar push token y programar recordatorio de bono
+        registerPushToken(firebaseUser.uid).catch(() => {});
+        scheduleDailyBonusReminder().catch(() => {});
+
         const profileUnsub = onSnapshot(
           doc(db, 'users', firebaseUser.uid),
           (snap) => {
             if (snap.exists()) {
-              setUser(snap.data() as UserProfile);
+              const raw = snap.data() as any;
+              setUser(normalizeUserProfile(raw, firebaseUser.uid));
+
+              const legacy = raw?.wildcards || {};
+              const hasLegacyKeys =
+                legacy.tiempo !== undefined
+                || legacy.escudo !== undefined
+                || legacy.bomba !== undefined
+                || legacy.ciego !== undefined;
+              if (hasLegacyKeys) {
+                updateDoc(doc(db, 'users', firebaseUser.uid), {
+                  wildcards: normalizeWildcardInventory(legacy),
+                }).catch(() => {});
+              }
             } else {
-              setUser(null);
+              ensureUserProfile(firebaseUser)
+                .then((profile) => setUser(profile))
+                .catch(() => setUser(null));
             }
             setLoading(false);
           },
@@ -61,21 +92,35 @@ export default function RootLayout() {
         );
         profileUnsubRef.current = profileUnsub;
       } else {
+        currentUidRef.current = null;
         setUser(null);
         setLoading(false);
       }
     });
 
+    const appStateSub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active' && currentUidRef.current) {
+        if (presenceCleanupRef.current) presenceCleanupRef.current();
+        presenceCleanupRef.current = registerPresence(currentUidRef.current);
+        scheduleDailyBonusReminder().catch(() => {});
+      }
+    });
+
     return () => {
       unsub();
+      appStateSub.remove();
       if (profileUnsubRef.current) profileUnsubRef.current();
       if (presenceCleanupRef.current) presenceCleanupRef.current();
+      unloadSounds();
     };
   }, []);
 
   return (
     <>
-      <StatusBar style="light" backgroundColor={COLORS.background} />
+      <StatusBar
+        style={isDark ? 'light' : 'dark'}
+        backgroundColor={COLORS.background}
+      />
       <Stack
         screenOptions={{
           headerShown: false,

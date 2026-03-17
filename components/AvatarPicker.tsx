@@ -1,7 +1,7 @@
-import React from 'react';
-import { View, Text, Image, StyleSheet } from 'react-native';
-import { COLORS } from '../constants/theme';
-import { getRankInfo } from '../services/ranking';
+import React, { useMemo } from 'react';
+import { View, Text, Image, StyleSheet, TouchableOpacity, FlatList } from 'react-native';
+import { useColors } from '../hooks/useColors';
+import { getRankInfo, getTranslatedRankName } from '../services/ranking';
 
 export const AVATARS: Record<string, any> = {
   avatar_1: require('../assets/avatars/avatar_1.png'),
@@ -16,6 +16,17 @@ export const AVATARS: Record<string, any> = {
 
 export const AVATAR_LIST = Object.keys(AVATARS);
 
+export const AVATAR_EMOJIS: Record<string, string> = {
+  avatar_1: '😎',
+  avatar_2: '🤖',
+  avatar_3: '🔥',
+  avatar_4: '🦾',
+  avatar_5: '🧠',
+  avatar_6: '⚡',
+  avatar_7: '👑',
+  avatar_8: '💥',
+};
+
 interface RankBadgeProps {
   rank: string;
   size?: 'small' | 'medium' | 'large';
@@ -29,20 +40,20 @@ export const RankBadge: React.FC<RankBadgeProps> = ({ rank, size = 'medium' }) =
     <View style={[styles.badge, { borderColor: rankInfo.color }]}>
       <Text style={{ fontSize }}>{rankInfo.icon}</Text>
       <Text style={[styles.rankText, { color: rankInfo.color, fontSize: fontSize - 4 }]}>
-        {rank}
+        {getTranslatedRankName(rank)}
       </Text>
     </View>
   );
 };
 
-import { TouchableOpacity, FlatList } from 'react-native';
-
 interface AvatarPickerProps {
   selected: string;
   onSelect: (avatar: string) => void;
+  useEmoji?: boolean;
 }
 
-const AvatarPicker: React.FC<AvatarPickerProps> = ({ selected, onSelect }) => {
+const AvatarPicker: React.FC<AvatarPickerProps> = ({ selected, onSelect, useEmoji = false }) => {
+  const COLORS = useColors();
   return (
     <FlatList
       data={AVATAR_LIST}
@@ -50,10 +61,20 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({ selected, onSelect }) => {
       keyExtractor={(item) => item}
       renderItem={({ item }) => (
         <TouchableOpacity
-          style={[styles.avatarOption, selected === item && styles.avatarSelected]}
+          style={[
+            styles.avatarOption,
+            { borderColor: COLORS.border },
+            selected === item && { borderColor: COLORS.primary },
+          ]}
           onPress={() => onSelect(item)}
         >
-          <Image source={AVATARS[item]} style={styles.avatarImage} />
+          {useEmoji ? (
+            <View style={[styles.emojiAvatar, { backgroundColor: COLORS.surface }]}> 
+              <Text style={styles.emojiText}>{AVATAR_EMOJIS[item] || '🙂'}</Text>
+            </View>
+          ) : (
+            <Image source={AVATARS[item]} style={styles.avatarImage} />
+          )}
         </TouchableOpacity>
       )}
     />
@@ -77,16 +98,22 @@ const styles = StyleSheet.create({
     margin: 6,
     borderRadius: 40,
     borderWidth: 2,
-    borderColor: COLORS.border,
     padding: 2,
-  },
-  avatarSelected: {
-    borderColor: COLORS.primary,
   },
   avatarImage: {
     width: 64,
     height: 64,
     borderRadius: 32,
+  },
+  emojiAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emojiText: {
+    fontSize: 30,
   },
 });
 

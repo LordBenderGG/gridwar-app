@@ -4,22 +4,32 @@ import {
   orderBy,
   limit,
   getDocs,
+  getCountFromServer,
   onSnapshot,
   doc,
   getDoc,
+  where,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { UserProfile } from './auth';
+import i18n from '../i18n';
 
 export const RANKS = [
-  { name: 'Novato', min: 0, max: 199, icon: '🪨', color: '#9E9E9E' },
-  { name: 'Bronce', min: 200, max: 499, icon: '🥉', color: '#CD7F32' },
-  { name: 'Plata', min: 500, max: 999, icon: '🥈', color: '#C0C0C0' },
-  { name: 'Oro', min: 1000, max: 1999, icon: '🥇', color: '#FFD700' },
-  { name: 'Diamante', min: 2000, max: 3999, icon: '💎', color: '#00BFFF' },
-  { name: 'Maestro', min: 4000, max: 7999, icon: '👑', color: '#9B59B6' },
-  { name: 'Leyenda', min: 8000, max: Infinity, icon: '💀', color: '#FFD700' },
+  { key: 'novato',   name: 'Novato',   min: 0,    max: 199,      icon: '🪨', color: '#9E9E9E' },
+  { key: 'bronce',   name: 'Bronce',   min: 200,  max: 499,      icon: '🥉', color: '#CD7F32' },
+  { key: 'plata',    name: 'Plata',    min: 500,  max: 999,      icon: '🥈', color: '#C0C0C0' },
+  { key: 'oro',      name: 'Oro',      min: 1000, max: 1999,     icon: '🥇', color: '#FFD700' },
+  { key: 'diamante', name: 'Diamante', min: 2000, max: 3999,     icon: '💎', color: '#00BFFF' },
+  { key: 'maestro',  name: 'Maestro',  min: 4000, max: 7999,     icon: '👑', color: '#9B59B6' },
+  { key: 'leyenda',  name: 'Leyenda',  min: 8000, max: Infinity, icon: '💀', color: '#FFD700' },
 ];
+
+/** Devuelve el nombre del rango traducido al idioma actual */
+export const getTranslatedRankName = (rankName: string): string => {
+  const rank = RANKS.find((r) => r.name === rankName);
+  if (!rank) return rankName;
+  return i18n.t(`ranks.${rank.key}`);
+};
 
 export const calculateRank = (points: number): string => {
   for (const rank of RANKS) {
@@ -60,10 +70,12 @@ export const getAllPlayers = async (): Promise<UserProfile[]> => {
 
 export const subscribeToTopPlayers = (
   callback: (players: UserProfile[]) => void,
-  limitCount = 10
+  limitCount = 10,
+  mode: 'global' | 'local' = 'global'
 ): (() => void) => {
   const q = query(
     collection(db, 'users'),
+    where('mode', '==', mode),
     orderBy('points', 'desc'),
     limit(limitCount)
   );
@@ -74,10 +86,12 @@ export const subscribeToTopPlayers = (
 
 export const subscribeToBottomPlayers = (
   callback: (players: UserProfile[]) => void,
-  limitCount = 10
+  limitCount = 10,
+  mode: 'global' | 'local' = 'global'
 ): (() => void) => {
   const q = query(
     collection(db, 'users'),
+    where('mode', '==', mode),
     orderBy('points', 'asc'),
     limit(limitCount)
   );
@@ -90,40 +104,22 @@ export const getPlayerRankPosition = async (uid: string): Promise<number> => {
   const userSnap = await getDoc(doc(db, 'users', uid));
   if (!userSnap.exists()) return -1;
   const userPoints = userSnap.data().points || 0;
-  const q = query(
-    collection(db, 'users'),
-    orderBy('points', 'desc')
+
+  // Contar cuántos jugadores tienen MÁS puntos — solo 1 lectura de agregado (O(1) en costos)
+  const countSnap = await getCountFromServer(
+    query(collection(db, 'users'), where('points', '>', userPoints))
   );
-  const snap = await getDocs(q);
-  const players = snap.docs.map((d) => d.data() as UserProfile);
-  return players.findIndex((p) => p.uid === uid) + 1;
+  return countSnap.data().count + 1; // posición = jugadores con más puntos + 1
 };
 
-export const WINNER_TITLES = [
-  'La leyenda viviente del tablero',
-  'Imbatible, imparable, inhumano',
-  'El que todos temen retar',
-  'Maestro del TIKTAK',
-  'El terror del tablero',
-  'Nadie le gana, nadie le iguala',
-  'El campeon indiscutible',
-];
-
-export const LOSER_TITLES = [
-  'El coleccionista oficial de derrotas',
-  'Campeon del fracaso',
-  'Novato eterno, esperanza cero',
-  'Ni su mama le gana',
-  'El tablero le tiene lastima',
-  'Record mundial en perder',
-  'La vergüenza del tablero',
-  'Experto en rendirse',
-];
-
+/** Devuelve un título de ganador traducido según la posición */
 export const getWinnerTitle = (position: number): string => {
-  return WINNER_TITLES[Math.min(position - 1, WINNER_TITLES.length - 1)];
+  const titles: string[] = i18n.t('winnerTitles', { returnObjects: true }) as string[];
+  return titles[Math.min(position - 1, titles.length - 1)];
 };
 
+/** Devuelve un título de perdedor traducido según la posición */
 export const getLoserTitle = (position: number): string => {
-  return LOSER_TITLES[Math.min(position - 1, LOSER_TITLES.length - 1)];
+  const titles: string[] = i18n.t('loserTitles', { returnObjects: true }) as string[];
+  return titles[Math.min(position - 1, titles.length - 1)];
 };

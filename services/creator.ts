@@ -5,7 +5,7 @@
  * El 2% de cada transacción de gemas va al creador.
  */
 
-import { doc, getDoc, setDoc, increment, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, increment, runTransaction, serverTimestamp, collection, query, where, limit, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
 import { auth } from './firebase';
 
@@ -79,6 +79,16 @@ export const getCreatorUid = async (): Promise<string | null> => {
     if (snap.exists()) {
       _cachedCreatorUid = snap.data().creatorUid ?? null;
       _cacheTs = now;
+    }
+
+    if (!_cachedCreatorUid) {
+      const q = query(collection(db, 'users'), where('email', '==', CREATOR_EMAIL), limit(1));
+      const qSnap = await getDocs(q);
+      if (!qSnap.empty) {
+        _cachedCreatorUid = qSnap.docs[0].id;
+        _cacheTs = now;
+        await setDoc(META_DOC, { creatorUid: _cachedCreatorUid }, { merge: true }).catch(() => {});
+      }
     }
   } catch {
     // silencioso
