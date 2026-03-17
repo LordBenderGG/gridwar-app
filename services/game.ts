@@ -323,95 +323,96 @@ export const finishRound = async (
   player1: string,
   player2: string
 ): Promise<{ roundWinner: string | null; matchWinner: string | null }> => {
-  const gameSnap = await getDoc(doc(db, 'games', gameId));
-  const gameData = gameSnap.exists() ? (gameSnap.data() as GameDoc) : null;
-
-  // Idempotencia: si ya finalizó, no volver a procesar ronda.
-  if (gameData?.status === 'finished') {
-    return { roundWinner: winnerId, matchWinner: gameData.winner ?? null };
-  }
-
-  const liveScore = gameSnap.exists()
-    ? ((gameData?.score || currentScore) as Record<string, number>)
-    : currentScore;
-
-  const newScore = { ...liveScore };
-  if (winnerId) newScore[winnerId] = (newScore[winnerId] || 0) + 1;
-
-  const matchWinner = Object.keys(newScore).find((uid) => newScore[uid] >= 2) || null;
-
-  if (matchWinner) {
-    // Intentar cerrar recompensas/historial sin bloquear el cierre oficial del juego.
-    try {
-      await finishMatch(gameId, matchWinner, matchWinner === player1 ? player2 : player1);
-    } catch (_) {
-      // Evitar que jugadores queden ocultos en Home por status stale.
-      await Promise.all([
-        updateDoc(doc(db, 'users', player1), { status: 'available' }).catch(() => {}),
-        updateDoc(doc(db, 'users', player2), { status: 'available' }).catch(() => {}),
-      ]);
+  const gameRef = doc(db, 'games', gameId);
+  const txResult = await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(gameRef);
+    if (!snap.exists()) {
+      return { matchWinner: null as string | null, justFinished: false, alreadyFinished: false };
     }
 
-    // Ahora sí marcar el game como finished (los puntos/gemas ya están escritos)
-    await updateDoc(doc(db, 'games', gameId), {
+    const data = snap.data() as GameDoc;
+    if (data.status === 'finished') {
+      return {
+        matchWinner: data.winner ?? null,
+        justFinished: false,
+        alreadyFinished: true,
+      };
+    }
+
+    const liveScore = (data.score || currentScore) as Record<string, number>;
+    const newScore = { ...liveScore };
+    if (winnerId) newScore[winnerId] = (newScore[winnerId] || 0) + 1;
+
+    const computedMatchWinner = Object.keys(newScore).find((uid) => newScore[uid] >= 2) || null;
+
+    if (computedMatchWinner) {
+      transaction.update(gameRef, {
+        score: newScore,
+        status: 'finished',
+        winner: computedMatchWinner,
+      });
+      return {
+        matchWinner: computedMatchWinner,
+        justFinished: true,
+        alreadyFinished: false,
+      };
+    }
+
+    transaction.update(gameRef, {
       score: newScore,
-      status: 'finished',
-      winner: matchWinner,
+      round: (data.round || 1) + 1,
     });
+
+    return { matchWinner: null as string | null, justFinished: false, alreadyFinished: false };
+  });
+
+  const matchWinner = txResult?.matchWinner ?? null;
+
+  if (matchWinner) {
+    // Solo el cliente que cerró la partida ejecuta recompensas.
+    if (txResult.justFinished) {
+      try {
+        await finishMatch(gameId, matchWinner, matchWinner === player1 ? player2 : player1);
+      } catch (_) {
+        await Promise.all([
+          updateDoc(doc(db, 'users', player1), { status: 'available' }).catch(() => {}),
+          updateDoc(doc(db, 'users', player2), { status: 'available' }).catch(() => {}),
+        ]);
+      }
+    }
+
     await Promise.all([
       updateDoc(doc(db, 'users', player1), { status: 'available' }).catch(() => {}),
       updateDoc(doc(db, 'users', player2), { status: 'available' }).catch(() => {}),
     ]);
-    const resetState = {
-      board: ['', '', '', '', '', '', '', '', ''],
-      currentTurn: player1,
-      timerStart: Date.now(),
-      wildcardUsed: false,
-      frozenPlayer: null,
-      lastMove: null,
-      shieldActive: false,
-      shieldPlayer: null,
-      turboActive: false,
-      turboPlayer: null,
-      rivalTimerReduced: false,
-      rivalTimerReducedTarget: null,
-      earthquakeActive: false,
-      earthquakeTarget: null,
-      confusionActive: false,
-      confusionTarget: null,
-      teleportPending: false,
-      teleportPlayer: null,
-    };
-    await update(ref(rtdb, `games/${gameId}`), resetState);
-  } else {
-    await updateDoc(doc(db, 'games', gameId), {
-      score: newScore,
-      round: increment(1),
-    });
-    const resetState = {
-      board: ['', '', '', '', '', '', '', '', ''],
-      currentTurn: player1,
-      timerStart: Date.now(),
-      wildcardUsed: false,
-      frozenPlayer: null,
-      lastMove: null,
-      shieldActive: false,
-      shieldPlayer: null,
-      turboActive: false,
-      turboPlayer: null,
-      rivalTimerReduced: false,
-      rivalTimerReducedTarget: null,
-      earthquakeActive: false,
-      earthquakeTarget: null,
-      confusionActive: false,
-      confusionTarget: null,
-      teleportPending: false,
-      teleportPlayer: null,
-    };
-    await update(ref(rtdb, `games/${gameId}`), resetState);
+
+    // No resetear tablero al cerrar partida para evitar flash de nueva ronda.
+    return { roundWinner: winnerId, matchWinner };
   }
 
-  return { roundWinner: winnerId, matchWinner };
+  const resetState = {
+    board: ['', '', '', '', '', '', '', '', ''],
+    currentTurn: player1,
+    timerStart: Date.now(),
+    wildcardUsed: false,
+    frozenPlayer: null,
+    lastMove: null,
+    shieldActive: false,
+    shieldPlayer: null,
+    turboActive: false,
+    turboPlayer: null,
+    rivalTimerReduced: false,
+    rivalTimerReducedTarget: null,
+    earthquakeActive: false,
+    earthquakeTarget: null,
+    confusionActive: false,
+    confusionTarget: null,
+    teleportPending: false,
+    teleportPlayer: null,
+  };
+  await update(ref(rtdb, `games/${gameId}`), resetState);
+
+  return { roundWinner: winnerId, matchWinner: null };
 };
 
 export const finishMatch = async (
