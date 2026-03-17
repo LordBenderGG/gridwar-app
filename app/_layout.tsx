@@ -15,6 +15,7 @@ import { UserProfile } from '../services/auth';
 import { registerPresence } from '../services/presence';
 import { preloadSounds, unloadSounds } from '../services/sound';
 import { registerPushToken, scheduleDailyBonusReminder } from '../services/notifications';
+import { flushPendingWildcardDebits } from '../services/wildcards';
 
 export default function RootLayout() {
   const { setUser, setLoading } = useAuthStore();
@@ -52,9 +53,10 @@ export default function RootLayout() {
         presenceCleanupRef.current = null;
       }
 
-      if (firebaseUser) {
-        currentUidRef.current = firebaseUser.uid;
-        presenceCleanupRef.current = registerPresence(firebaseUser.uid);
+        if (firebaseUser) {
+          currentUidRef.current = firebaseUser.uid;
+          presenceCleanupRef.current = registerPresence(firebaseUser.uid);
+          flushPendingWildcardDebits(firebaseUser.uid).catch(() => {});
 
         // Registrar push token y programar recordatorio de bono
         registerPushToken(firebaseUser.uid).catch(() => {});
@@ -103,6 +105,7 @@ export default function RootLayout() {
         if (presenceCleanupRef.current) presenceCleanupRef.current();
         presenceCleanupRef.current = registerPresence(currentUidRef.current);
         scheduleDailyBonusReminder().catch(() => {});
+        flushPendingWildcardDebits(currentUidRef.current).catch(() => {});
       }
     });
 

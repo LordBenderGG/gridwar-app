@@ -25,6 +25,7 @@ import { scheduleLocalChallengeNotification } from '../../services/notifications
 import { getDailyMissions, DailyMission } from '../../services/missions';
 import { checkAndResetSeason, getCurrentSeason, daysUntilSeasonEnd } from '../../services/seasons';
 import { getTranslatedRankName } from '../../services/ranking';
+import { flushPendingWildcardDebits } from '../../services/wildcards';
 import '../../i18n';
 
 const { width } = Dimensions.get('window');
@@ -103,6 +104,7 @@ export default function HomeScreen() {
   // Cargar misiones diarias
   useEffect(() => {
     if (!user || !actorUid) return;
+    flushPendingWildcardDebits(actorUid).catch(() => {});
     getDailyMissions(actorUid)
       .then(setDailyMissions)
       .catch(() => {});

@@ -1,7 +1,141 @@
 import { update, ref } from 'firebase/database';
 import { doc, updateDoc, increment, runTransaction } from 'firebase/firestore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { rtdb, db } from './firebase';
 import { CellValue } from './game';
+
+const PENDING_WILDCARD_DEBITS_KEY = 'pendingWildcardDebits';
+
+type PendingWildcardDebit = {
+  id: string;
+  uid: string;
+  wildcardId: string;
+  gameId: string;
+  retryCount: number;
+  createdAt: number;
+};
+
+const LEGACY_KEY: Record<string, string> = {
+  time_reduce: 'tiempo',
+  shield: 'escudo',
+  sabotage: 'bomba',
+  earthquake: 'ciego',
+};
+
+const flushLocks = new Set<string>();
+
+const readPendingDebits = async (): Promise<PendingWildcardDebit[]> => {
+  try {
+    const raw = await AsyncStorage.getItem(PENDING_WILDCARD_DEBITS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed as PendingWildcardDebit[];
+  } catch {
+    return [];
+  }
+};
+
+const writePendingDebits = async (items: PendingWildcardDebit[]): Promise<void> => {
+  try {
+    await AsyncStorage.setItem(PENDING_WILDCARD_DEBITS_KEY, JSON.stringify(items));
+  } catch {
+    // ignore storage error
+  }
+};
+
+const enqueuePendingDebit = async (
+  uid: string,
+  wildcardId: string,
+  gameId: string
+): Promise<void> => {
+  const items = await readPendingDebits();
+  items.push({
+    id: `${uid}:${gameId}:${wildcardId}:${Date.now()}`,
+    uid,
+    wildcardId,
+    gameId,
+    retryCount: 0,
+    createdAt: Date.now(),
+  });
+  await writePendingDebits(items);
+};
+
+const shouldRetryDebitError = (err: any): boolean => {
+  const code = String(err?.code || '').toLowerCase();
+  const msg = String(err?.message || err || '').toLowerCase();
+  return code.includes('unavailable')
+    || code.includes('network')
+    || msg.includes('network')
+    || msg.includes('offline')
+    || msg.includes('timed out')
+    || msg.includes('timeout');
+};
+
+const debitWildcardInventoryOnce = async (
+  uid: string,
+  wildcardId: string
+): Promise<{ ok: boolean; retriable: boolean }> => {
+  try {
+    const userRef = doc(db, 'users', uid);
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(userRef);
+      if (!snap.exists()) return;
+      const data = snap.data() as any;
+      const current = Number(data?.wildcards?.[wildcardId] ?? 0);
+      const legacyKey = LEGACY_KEY[wildcardId];
+      const currentLegacy = legacyKey ? Number(data?.wildcards?.[legacyKey] ?? 0) : 0;
+
+      if (current > 0) {
+        transaction.update(userRef, { [`wildcards.${wildcardId}`]: increment(-1) });
+        return;
+      }
+      if (currentLegacy > 0) {
+        transaction.update(userRef, {
+          [`wildcards.${legacyKey}`]: 0,
+          [`wildcards.${wildcardId}`]: Math.max(0, currentLegacy - 1),
+        });
+      }
+    });
+    return { ok: true, retriable: false };
+  } catch (err: any) {
+    return { ok: false, retriable: shouldRetryDebitError(err) };
+  }
+};
+
+const debitWildcardInventoryInBackground = async (
+  uid: string,
+  wildcardId: string,
+  gameId: string
+): Promise<void> => {
+  const result = await debitWildcardInventoryOnce(uid, wildcardId);
+  if (!result.ok && result.retriable) {
+    await enqueuePendingDebit(uid, wildcardId, gameId);
+  }
+};
+
+export const flushPendingWildcardDebits = async (uid: string): Promise<void> => {
+  if (!uid || flushLocks.has(uid)) return;
+  flushLocks.add(uid);
+  try {
+    const all = await readPendingDebits();
+    const mine = all.filter((d) => d.uid === uid).sort((a, b) => a.createdAt - b.createdAt);
+    if (!mine.length) return;
+
+    const keep: PendingWildcardDebit[] = [];
+    for (const item of mine) {
+      const result = await debitWildcardInventoryOnce(item.uid, item.wildcardId);
+      if (!result.ok && result.retriable) {
+        keep.push({ ...item, retryCount: item.retryCount + 1 });
+      }
+    }
+
+    const others = all.filter((d) => d.uid !== uid);
+    await writePendingDebits([...others, ...keep]);
+  } finally {
+    flushLocks.delete(uid);
+  }
+};
 
 export interface Wildcard {
   id: string;
@@ -244,34 +378,8 @@ export const applyWildcard = async (
 
   await update(ref(rtdb, `games/${gameId}`), updates);
 
-  // Descontar 1 del inventario en Firestore con runTransaction para evitar
-  // inventario negativo en race conditions (doble tap simultáneo).
-  const LEGACY_KEY: Record<string, string> = {
-    time_reduce: 'tiempo',
-    shield: 'escudo',
-    sabotage: 'bomba',
-    earthquake: 'ciego',
-  };
-  const userRef = doc(db, 'users', playerUid);
-  await runTransaction(db, async (transaction) => {
-    const snap = await transaction.get(userRef);
-    if (!snap.exists()) return;
-    const data = snap.data() as any;
-    const current = Number(data?.wildcards?.[wildcardId] ?? 0);
-    const legacyKey = LEGACY_KEY[wildcardId];
-    const currentLegacy = legacyKey ? Number(data?.wildcards?.[legacyKey] ?? 0) : 0;
-
-    if (current > 0) {
-      transaction.update(userRef, { [`wildcards.${wildcardId}`]: increment(-1) });
-      return;
-    }
-    if (currentLegacy > 0) {
-      transaction.update(userRef, {
-        [`wildcards.${legacyKey}`]: 0,
-        [`wildcards.${wildcardId}`]: Math.max(0, currentLegacy - 1),
-      });
-    }
-  });
+  // Reducir latencia percibida: el descuento en Firestore va en background.
+  void debitWildcardInventoryInBackground(playerUid, wildcardId, gameId);
 
   return true;
 };

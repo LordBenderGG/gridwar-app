@@ -8,6 +8,7 @@ import { POINTS_WIN, POINTS_LOSS } from '../../constants/theme';
 import { getUserProfile } from '../../services/auth';
 import { db } from '../../services/firebase';
 import { useAuthStore } from '../../store/authStore';
+import { flushPendingWildcardDebits } from '../../services/wildcards';
 import '../../i18n';
 
 const createStyles = (COLORS: any) => StyleSheet.create({
@@ -101,6 +102,10 @@ export default function ResultadoScreen() {
     // Capturar puntos antes de recargar para calcular el delta real
     const pointsBefore = user?.points ?? null;
     const gemsBefore = user?.gems ?? null;
+
+    if (myUid) {
+      flushPendingWildcardDebits(myUid).catch(() => {});
+    }
 
     // Recargar perfil actualizado desde Firestore (puntos, gemas, rango)
     if (myUid) {
