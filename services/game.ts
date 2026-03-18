@@ -44,6 +44,8 @@ export interface GameState {
   confusionTarget: string | null;
   teleportPending: boolean;
   teleportPlayer: string | null;
+  idleTimeoutCount?: number;
+  idleTimeoutFirstPlayer?: string | null;
 }
 
 export interface GameDoc {
@@ -65,6 +67,7 @@ export interface GameDoc {
   round: number;
   score: Record<string, number>;
   winner: string | null;
+  endReason?: 'normal' | 'idle_penalty' | null;
   type: 'global' | 'local' | 'tournament';
   tournamentId?: string;
   createdAt: any;
@@ -130,6 +133,7 @@ export const createGame = async (
     round: 1,
     score: { [player1]: 0, [player2]: 0 },
     winner: null,
+    endReason: null,
     type,
     ...(tournamentId && { tournamentId }),
     createdAt: serverTimestamp(),
@@ -155,6 +159,8 @@ export const createGame = async (
     confusionTarget: null,
     teleportPending: false,
     teleportPlayer: null,
+    idleTimeoutCount: 0,
+    idleTimeoutFirstPlayer: null,
     players: { [player1]: true, [player2]: true },
     chat: null,
   };
@@ -206,6 +212,8 @@ export const makeMove = async (
         turboPlayer: null,
         teleportPending: false,
         teleportPlayer: null,
+        idleTimeoutCount: 0,
+        idleTimeoutFirstPlayer: null,
       };
 
       if (live.earthquakeActive && live.earthquakeTarget === actingPlayer) {
@@ -251,10 +259,12 @@ export const skipTurn = async (
   gameId: string,
   opponentId: string,
   _currentState?: GameState,
-  skippedPlayer?: string
-): Promise<void> => {
+  skippedPlayer?: string,
+  options?: { trackIdleTimeout?: boolean }
+): Promise<{ idleTimeoutCount: number; idleTimeoutFirstPlayer: string | null; lastMove: { player: string; cell: number } | null } | null> => {
+  const trackIdleTimeout = options?.trackIdleTimeout ?? true;
   const gameRef = ref(rtdb, `games/${gameId}`);
-  await runRTDBTransaction(gameRef, (liveRaw: any) => {
+  const tx = await runRTDBTransaction(gameRef, (liveRaw: any) => {
     if (!liveRaw) return;
     const live = liveRaw as GameState;
     if (!live.currentTurn) return;
@@ -273,6 +283,20 @@ export const skipTurn = async (
     };
 
     const turnOwner = skippedPlayer || live.currentTurn;
+
+    if (trackIdleTimeout) {
+      const boardEmpty = Array.isArray(live.board) && live.board.every((c) => c === '');
+      const noMovesYet = live.lastMove === null || boardEmpty;
+      if (noMovesYet) {
+        const nextCount = Number(live.idleTimeoutCount || 0) + 1;
+        next.idleTimeoutCount = nextCount;
+        next.idleTimeoutFirstPlayer = live.idleTimeoutFirstPlayer || turnOwner;
+      } else {
+        next.idleTimeoutCount = 0;
+        next.idleTimeoutFirstPlayer = null;
+      }
+    }
+
     if (live.earthquakeActive && live.earthquakeTarget === turnOwner) {
       next.earthquakeActive = false;
       next.earthquakeTarget = null;
@@ -292,6 +316,15 @@ export const skipTurn = async (
 
     return next;
   });
+
+  if (!tx.committed) return null;
+  const after = tx.snapshot.val() as GameState | null;
+  if (!after) return null;
+  return {
+    idleTimeoutCount: Number(after.idleTimeoutCount || 0),
+    idleTimeoutFirstPlayer: after.idleTimeoutFirstPlayer ?? null,
+    lastMove: after.lastMove ?? null,
+  };
 };
 
 export const subscribeToGame = (
@@ -305,6 +338,56 @@ export const subscribeToGame = (
     }
   });
   return () => unsubscribe();
+};
+
+export const finishNoCombatChallenge = async (
+  gameId: string,
+  player1: string,
+  player2: string
+): Promise<void> => {
+  const gameRef = doc(db, 'games', gameId);
+  const user1Ref = doc(db, 'users', player1);
+  const user2Ref = doc(db, 'users', player2);
+
+  await runTransaction(db, async (transaction) => {
+    const [gameSnap, u1Snap, u2Snap] = await Promise.all([
+      transaction.get(gameRef),
+      transaction.get(user1Ref),
+      transaction.get(user2Ref),
+    ]);
+    if (!gameSnap.exists() || !u1Snap.exists() || !u2Snap.exists()) return;
+
+    const gameData = gameSnap.data() as GameDoc;
+    if (gameData.status === 'finished') return;
+    if (gameData.type === 'tournament') return;
+
+    const u1 = u1Snap.data() as any;
+    const u2 = u2Snap.data() as any;
+
+    transaction.update(gameRef, {
+      status: 'finished',
+      winner: null,
+      endReason: 'idle_penalty',
+    });
+
+    transaction.update(user1Ref, {
+      gems: Math.max(0, Number(u1.gems || 0) - 5),
+      losses: Number(u1.losses || 0) + 1,
+      gamesPlayed: Number(u1.gamesPlayed || 0) + 1,
+      status: 'available',
+      currentWinStreak: 0,
+      challengeBlockedUntil: null,
+    });
+
+    transaction.update(user2Ref, {
+      gems: Math.max(0, Number(u2.gems || 0) - 5),
+      losses: Number(u2.losses || 0) + 1,
+      gamesPlayed: Number(u2.gamesPlayed || 0) + 1,
+      status: 'available',
+      currentWinStreak: 0,
+      challengeBlockedUntil: null,
+    });
+  });
 };
 
 export const subscribeToGameDoc = (
@@ -350,6 +433,7 @@ export const finishRound = async (
         score: newScore,
         status: 'finished',
         winner: computedMatchWinner,
+        endReason: 'normal',
       });
       return {
         matchWinner: computedMatchWinner,
@@ -409,6 +493,8 @@ export const finishRound = async (
     confusionTarget: null,
     teleportPending: false,
     teleportPlayer: null,
+    idleTimeoutCount: 0,
+    idleTimeoutFirstPlayer: null,
   };
   await update(ref(rtdb, `games/${gameId}`), resetState);
 
@@ -420,8 +506,6 @@ export const finishMatch = async (
   winnerId: string,
   loserId: string
 ): Promise<void> => {
-  const BLOCK_HOURS = 3;
-
   // Leer el documento del juego para saber el marcador exacto (2-0 o 2-1)
   const gameRef = doc(db, 'games', gameId);
   const gameSnap = await getDoc(gameRef);
@@ -506,7 +590,6 @@ export const finishMatch = async (
     const loserNewPoints = skipPoints
       ? (loserData.points || 0)
       : Math.max(0, (loserData.points || 0) + POINTS_LOSS);
-    const blockUntil = Date.now() + BLOCK_HOURS * 60 * 60 * 1000;
 
     // Calcular racha del ganador y bonus de gems
     const newWinStreak = (winnerData.currentWinStreak || 0) + 1;
@@ -541,7 +624,7 @@ export const finishMatch = async (
       losses: (loserData.losses || 0) + 1,
       gamesPlayed: (loserData.gamesPlayed || 0) + 1,
       rank: calculateRank(loserNewPoints),
-      challengeBlockedUntil: blockUntil,
+      challengeBlockedUntil: null,
       status: 'available',
       currentWinStreak: 0,  // reset racha al perder
       xp: loserNewXP,

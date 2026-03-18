@@ -144,6 +144,8 @@
     "pointsLost": "{{points}} pts",
     "gemsEarned": "+{{gems}} 💎",
     "blocked": "⏳ Bloqueado para retar durante 3 horas",
+    "noCombatTitle": "¡NO COMBATIERON!",
+    "noCombatSubtitle": "💎 -5 por no combatir",
     "playAgain": "Jugar de nuevo",
     "goHome": "Ir al Inicio",
     "victoryMessages": [

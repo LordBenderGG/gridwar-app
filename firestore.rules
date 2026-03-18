@@ -10,7 +10,7 @@ service cloud.firestore {
       let allowed = [
         'points', 'gems', 'wins', 'losses', 'gamesPlayed', 'rank',
         'status', 'currentWinStreak', 'maxWinStreak',
-        'challengeBlockedUntil',
+        'challengeBlockedUntil', 'activeChallengeId',
         'xp', 'level'
       ].toSet();
       return changed.hasOnly(allowed);

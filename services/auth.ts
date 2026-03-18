@@ -67,6 +67,7 @@ export interface UserProfile {
   gamesPlayed: number;
   blockedUntil: number | null;
   challengeBlockedUntil: number | null;
+  activeChallengeId?: string | null;
   status: 'available' | 'in_game' | 'challenged' | 'blocked';
   mode: 'global' | 'local';
   lang: string;
@@ -120,6 +121,7 @@ export const normalizeUserProfile = (raw: any, fallbackUid?: string): UserProfil
   return {
     ...raw,
     uid: raw?.uid || fallbackUid || '',
+    activeChallengeId: raw?.activeChallengeId ?? null,
     wildcards: normalizeWildcardInventory(raw?.wildcards),
   } as UserProfile;
 };
@@ -183,6 +185,7 @@ export const registerUser = async (
     gamesPlayed: 0,
     blockedUntil: null,
     challengeBlockedUntil: null,
+    activeChallengeId: null,
     status: 'available',
     mode: 'global',
     lang: 'es',
@@ -237,6 +240,7 @@ export const ensureUserProfile = async (firebaseUser: User): Promise<UserProfile
     gamesPlayed: 0,
     blockedUntil: null,
     challengeBlockedUntil: null,
+    activeChallengeId: null,
     status: 'available',
     mode: 'global',
     lang: 'es',

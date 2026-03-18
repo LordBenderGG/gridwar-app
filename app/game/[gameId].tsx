@@ -12,7 +12,7 @@ import { ref, onValue, get, update } from 'firebase/database';
 import { rtdb, auth } from '../../services/firebase';
 import {
   subscribeToGame, subscribeToGameDoc, makeMove, skipTurn,
-  checkWinner, isBoardFull, finishRound, forfeitGame,
+  checkWinner, isBoardFull, finishRound, forfeitGame, finishNoCombatChallenge,
   CellValue, GameState, GameDoc, applyEarthquakeBoard, sendChatEmoji,
 } from '../../services/game';
 import { applyWildcard, applyTeleportMove } from '../../services/wildcards';
@@ -65,6 +65,7 @@ export default function GameScreen() {
   const roundUnlockTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const frozenSkipInProgressRef = useRef(false); // evita doble skipTurn cuando congelado
   const turnSkipInProgressRef = useRef(false);
+  const noCombatClosingRef = useRef(false);
   const shakeAnim = useSharedValue(0);
   const boardShakeAnim = useSharedValue(0);
   // Guardamos la versión anterior de gameState para detectar cambios de flags
@@ -145,6 +146,14 @@ export default function GameScreen() {
     setMoveDebug(reason);
   };
 
+  const computeTurnDuration = (state: GameState) => {
+    const turboBonus = state.turboActive && state.turboPlayer === myUid ? 10 : 0;
+    const rivalReducedForMe =
+      state.rivalTimerReduced
+      && (!state.rivalTimerReducedTarget || state.rivalTimerReducedTarget === myUid);
+    return rivalReducedForMe ? 15 : TIMER_TOTAL + turboBonus;
+  };
+
   // ── Suscripción al GameDoc (Firestore) ───────────────────────────────
   useEffect(() => {
     if (!gameId || !myUid) return;
@@ -152,10 +161,15 @@ export default function GameScreen() {
       setGameDoc(docData);
       gameDocRef.current = docData;
       setMySymbol(docData.player1 === myUid ? 'X' : 'O');
-      if (docData.status === 'finished' && docData.winner) {
+      if (docData.status === 'finished') {
         router.replace({
           pathname: '/game/resultado',
-          params: { gameId, winnerId: docData.winner, myUid },
+          params: {
+            gameId,
+            winnerId: docData.winner || '',
+            myUid,
+            endReason: docData.endReason || 'normal',
+          },
         });
       }
     });
@@ -227,7 +241,7 @@ export default function GameScreen() {
           const doc = gameDocRef.current;
           const opponentId = doc.player1 === myUid ? doc.player2 : doc.player1;
           setTimeout(() => {
-            skipTurn(gameId!, opponentId, state, myUid).finally(() => {
+            skipTurn(gameId!, opponentId, state, myUid, { trackIdleTimeout: false }).finally(() => {
               frozenSkipInProgressRef.current = false;
             });
           }, 1500);
@@ -267,6 +281,7 @@ export default function GameScreen() {
     gameDocRef.current = null;
     gameStateRef.current = null;
     turnSkipInProgressRef.current = false;
+    noCombatClosingRef.current = false;
     if (roundUnlockTimeoutRef.current) {
       clearTimeout(roundUnlockTimeoutRef.current);
       roundUnlockTimeoutRef.current = null;
@@ -278,6 +293,59 @@ export default function GameScreen() {
     setWildcardAlert(null);
     setMoveDebug('');
   }, [gameId]);
+
+  useEffect(() => {
+    if (!gameId || !gameDoc || !gameState) return;
+    if (noCombatClosingRef.current) return;
+    const noMovesDetected =
+      gameState.lastMove === null
+      || (Array.isArray(gameState.board) && gameState.board.every((c) => c === ''));
+
+    const shouldFinishNoCombat =
+      gameDoc.type !== 'tournament'
+      && gameDoc.round === 1
+      && noMovesDetected
+      && Number(gameState.idleTimeoutCount || 0) >= 2
+      && gameDoc.status !== 'finished';
+
+    if (!shouldFinishNoCombat) return;
+
+    noCombatClosingRef.current = true;
+    finishNoCombatChallenge(gameId, gameDoc.player1, gameDoc.player2)
+      .catch(() => {})
+      .finally(() => {
+        noCombatClosingRef.current = false;
+      });
+  }, [gameId, gameDoc?.type, gameDoc?.round, gameDoc?.status, gameDoc?.player1, gameDoc?.player2, gameState?.idleTimeoutCount, gameState?.lastMove]);
+
+  useEffect(() => {
+    if (!gameId || !gameDoc || !gameState) return;
+    if (noCombatClosingRef.current) return;
+    if (gameDoc.type === 'tournament') return;
+    if (gameDoc.round !== 1) return;
+    if (gameDoc.status === 'finished') return;
+    const noMovesDetected =
+      gameState.lastMove === null
+      || (Array.isArray(gameState.board) && gameState.board.every((c) => c === ''));
+    if (!noMovesDetected) return;
+
+    const idleCount = Number(gameState.idleTimeoutCount || 0);
+    if (idleCount < 1) return;
+
+    // Fallback: si ya hubo al menos 1 timeout registrado y el turno actual
+    // tambien vencio por reloj, cerrar por no combate aunque ese segundo skip
+    // no haya sido procesado por el cliente propietario del turno.
+    const turnDuration = computeTurnDuration(gameState);
+    const elapsed = Date.now() - Number(gameState.timerStart || 0);
+    if (elapsed < turnDuration + 1200) return;
+
+    noCombatClosingRef.current = true;
+    finishNoCombatChallenge(gameId, gameDoc.player1, gameDoc.player2)
+      .catch(() => {})
+      .finally(() => {
+        noCombatClosingRef.current = false;
+      });
+  }, [gameId, gameDoc?.type, gameDoc?.round, gameDoc?.status, gameDoc?.player1, gameDoc?.player2, gameState?.idleTimeoutCount, gameState?.lastMove, gameState?.timerStart, gameState?.rivalTimerReduced, gameState?.rivalTimerReducedTarget, gameState?.currentTurn]);
 
   useEffect(() => {
     if (gameDoc && gameState) {
@@ -383,9 +451,54 @@ export default function GameScreen() {
     const doc = gameDocRef.current;
     if (timedOutPlayer !== doc.player1 && timedOutPlayer !== doc.player2) return;
 
+    const noMovesDetected =
+      state.lastMove === null
+      || (Array.isArray(state.board) && state.board.every((c) => c === ''));
+
+    const directNoCombatClose =
+      doc.type !== 'tournament'
+      && doc.round === 1
+      && noMovesDetected
+      && Number(state.idleTimeoutCount || 0) >= 1;
+
+    if (directNoCombatClose) {
+      turnSkipInProgressRef.current = true;
+      try {
+        await finishNoCombatChallenge(gameId, doc.player1, doc.player2).catch(() => {});
+      } finally {
+        turnSkipInProgressRef.current = false;
+      }
+      return;
+    }
+
     const opponentId = doc.player1 === timedOutPlayer ? doc.player2 : doc.player1;
     turnSkipInProgressRef.current = true;
-    await skipTurn(gameId, opponentId, state, timedOutPlayer).catch(() => {});
+    try {
+      const skipResult = await skipTurn(gameId, opponentId, state, timedOutPlayer, {
+        trackIdleTimeout: true,
+      }).catch(() => null);
+
+      // Fallback robusto: leer estado LIVE tras el skip para evitar carreras
+      // entre clientes donde skipResult puede llegar null por no-commit local.
+      const liveAfterSnap = await get(ref(rtdb, `games/${gameId}`)).catch(() => null);
+      const liveAfter = liveAfterSnap?.exists() ? (liveAfterSnap.val() as GameState) : null;
+      const idleCount = liveAfter ? Number(liveAfter.idleTimeoutCount || 0) : Number(skipResult?.idleTimeoutCount || 0);
+      const noMovesYet = liveAfter
+        ? (liveAfter.lastMove === null || (Array.isArray(liveAfter.board) && liveAfter.board.every((c) => c === '')))
+        : noMovesDetected;
+
+      const shouldFinishNoCombat =
+        doc.type !== 'tournament'
+        && doc.round === 1
+        && noMovesYet
+        && idleCount >= 2;
+
+      if (shouldFinishNoCombat) {
+        await finishNoCombatChallenge(gameId, doc.player1, doc.player2).catch(() => {});
+      }
+    } finally {
+      turnSkipInProgressRef.current = false;
+    }
   };
 
   const resolveRound = useCallback(async (
@@ -428,7 +541,7 @@ export default function GameScreen() {
       else playSound('lose');
       router.replace({
         pathname: '/game/resultado',
-        params: { gameId, winnerId: matchWinner, myUid },
+        params: { gameId, winnerId: matchWinner, myUid, endReason: 'normal' },
       });
     } else {
     const msg = winnerId === myUid ? t('game.roundWin') : winnerId ? t('game.roundLoss') : t('game.draw');
@@ -531,7 +644,7 @@ export default function GameScreen() {
       frozenSkipInProgressRef.current = true;
       Alert.alert(t('game.frozenTitle'), t('game.frozenMsg'));
       const opponentId = gameDoc.player1 === actingPlayer ? gameDoc.player2 : gameDoc.player1;
-      skipTurn(gameId!, opponentId, liveState, actingPlayer).finally(() => {
+      skipTurn(gameId!, opponentId, liveState, actingPlayer, { trackIdleTimeout: false }).finally(() => {
         frozenSkipInProgressRef.current = false;
       });
       showMoveDebug('blocked:frozen_skip');

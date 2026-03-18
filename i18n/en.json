@@ -144,6 +144,8 @@
     "pointsLost": "{{points}} pts",
     "gemsEarned": "+{{gems}} 💎",
     "blocked": "⏳ Blocked from challenging for 3 hours",
+    "noCombatTitle": "NO COMBAT!",
+    "noCombatSubtitle": "💎 -5 for not fighting",
     "playAgain": "Play again",
     "goHome": "Go to Home",
     "victoryMessages": [

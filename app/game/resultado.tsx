@@ -48,10 +48,11 @@ const createStyles = (COLORS: any) => StyleSheet.create({
 });
 
 export default function ResultadoScreen() {
-  const { gameId, winnerId, myUid } = useLocalSearchParams<{
+  const { gameId, winnerId, myUid, endReason } = useLocalSearchParams<{
     gameId: string;
     winnerId: string;
     myUid: string;
+    endReason?: string;
   }>();
   const router = useRouter();
   const { t } = useTranslation();
@@ -66,7 +67,8 @@ export default function ResultadoScreen() {
   const [isLocalTournamentMatch, setIsLocalTournamentMatch] = useState(false);
   const [loserScoreAtEnd, setLoserScoreAtEnd] = useState<number | null>(null);
 
-  const isWinner = winnerId === myUid;
+  const isIdlePenalty = endReason === 'idle_penalty';
+  const isWinner = !isIdlePenalty && winnerId === myUid;
 
   useEffect(() => {
     if (!gameId) return;
@@ -174,11 +176,12 @@ export default function ResultadoScreen() {
   }, [gemsDelta, expectedGemsDelta]);
 
   const displayedPointsDelta = useMemo(() => {
+    if (isIdlePenalty) return 0;
     if (isLocalTournamentMatch) return 0;
     if (pointsDelta === null) return isWinner ? POINTS_WIN : POINTS_LOSS;
     if (pointsDelta !== 0) return pointsDelta;
     return isWinner ? POINTS_WIN : POINTS_LOSS;
-  }, [isLocalTournamentMatch, pointsDelta, isWinner]);
+  }, [isIdlePenalty, isLocalTournamentMatch, pointsDelta, isWinner]);
 
   return (
     <Animated.View
@@ -190,9 +193,9 @@ export default function ResultadoScreen() {
     >
       <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
         <Text style={styles.emoji}>{isWinner ? '🏆' : '💀'}</Text>
-        <Text style={[styles.title, isWinner ? styles.winTitle : styles.lossTitle]}>
-          {message}
-        </Text>
+          <Text style={[styles.title, isWinner ? styles.winTitle : styles.lossTitle]}>
+            {isIdlePenalty ? t('result.noCombatTitle') : message}
+          </Text>
 
         <View style={styles.pointsBox}>
           <Text style={[styles.points, isWinner ? styles.winPoints : styles.lossPoints]}>
@@ -203,15 +206,14 @@ export default function ResultadoScreen() {
           <Text style={styles.blockedText}>
             {isLocalTournamentMatch
               ? t('result.noPointsChange', { defaultValue: 'Sin cambios de puntos' })
+              : isIdlePenalty
+                ? t('result.noCombatSubtitle')
               : (displayedPointsDelta > 0
                   ? t('result.pointsEarned', { points: displayedPointsDelta })
                   : displayedPointsDelta < 0
                     ? t('result.pointsLost', { points: Math.abs(displayedPointsDelta) })
                     : t('result.noPointsChange', { defaultValue: 'Sin cambios de puntos' }))}
           </Text>
-          {!isWinner && (
-            <Text style={styles.blockedText}>{t('result.blocked')}</Text>
-          )}
         </View>
       </Animated.View>
 

@@ -12,7 +12,14 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { UserProfile } from '../../services/auth';
-import { sendChallenge, subscribeToIncomingChallenges, acceptChallenge, rejectChallenge, Challenge } from '../../services/challenge';
+import {
+  sendChallenge,
+  subscribeToIncomingChallenges,
+  acceptChallenge,
+  rejectChallenge,
+  cancelChallenge,
+  Challenge,
+} from '../../services/challenge';
 import { subscribeToAllPresence } from '../../services/presence';
 import { useAuthStore } from '../../store/authStore';
 import PlayerCard from '../../components/PlayerCard';
@@ -50,7 +57,9 @@ export default function HomeScreen() {
   const [seasonDaysLeft, setSeasonDaysLeft] = useState<number | null>(null);
   const [focusKey, setFocusKey] = useState(0);
   const [missionsExpanded, setMissionsExpanded] = useState(false);
+  const [challengeNotice, setChallengeNotice] = useState<string | null>(null);
   const challengeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const noticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastChallengeIdRef = useRef<string | null>(null);
   const pulseAnim = useRef(new RNAnimated.Value(1)).current;
 
@@ -99,6 +108,12 @@ export default function HomeScreen() {
         RNAnimated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
       ])
     ).start();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (noticeTimeoutRef.current) clearTimeout(noticeTimeoutRef.current);
+    };
   }, []);
 
   // Cargar misiones diarias
@@ -177,7 +192,7 @@ export default function HomeScreen() {
           router.push(`/game/${data.gameId}?myUid=${navUid}`);
         } else if (data.status === 'rejected' || data.status === 'expired') {
           clearPendingChallenge();
-          Alert.alert(t('home.challengeNoAnswer'), t('home.challengeRejected'));
+          showChallengeNotice(t('home.challengeRejected'));
         }
       }
     );
@@ -189,6 +204,12 @@ export default function HomeScreen() {
     setChallenging(null);
     setSentChallengeId(null);
     setSentChallengeTo(null);
+  };
+
+  const showChallengeNotice = (message: string) => {
+    if (noticeTimeoutRef.current) clearTimeout(noticeTimeoutRef.current);
+    setChallengeNotice(message);
+    noticeTimeoutRef.current = setTimeout(() => setChallengeNotice(null), 2200);
   };
 
   const handleChallenge = async (target: UserProfile) => {
@@ -216,13 +237,12 @@ export default function HomeScreen() {
     }
 
     if (target.status !== 'available') {
-      Alert.alert(
-        t('home.playerNotAvailable'),
+      showChallengeNotice(
         target.status === 'in_game'
           ? t('home.playerInGame', { username: target.username })
           : target.status === 'challenged'
-          ? t('home.playerChallenged', { username: target.username })
-          : t('home.playerBusy', { username: target.username })
+            ? t('home.playerChallenged', { username: target.username })
+            : t('home.playerBusy', { username: target.username })
       );
       return;
     }
@@ -249,16 +269,21 @@ export default function HomeScreen() {
       }, 35000);
     } catch (e: any) {
       setChallenging(null);
-      Alert.alert('Error', e?.message || t('home.challengeError'));
+      const raw = String(e?.message || e || '').toLowerCase();
+      if (raw.includes('target_not_available') || raw.includes('target_not_avaliable') || raw.includes('target_already_challenged')) {
+        showChallengeNotice(t('home.playerNotAvailable'));
+      } else if (raw.includes('from_not_available') || raw.includes('from_already_challenged')) {
+        showChallengeNotice(t('home.notAvailable'));
+      } else {
+        showChallengeNotice(t('home.challengeError'));
+      }
     }
   };
 
   const handleCancelChallenge = async () => {
     if (!sentChallengeId || !user || !sentChallengeTo || !actorUid) return;
     try {
-      await updateDoc(doc(db, 'challenges', sentChallengeId), { status: 'expired' });
-      await updateDoc(doc(db, 'users', actorUid), { status: 'available' });
-      await updateDoc(doc(db, 'users', sentChallengeTo), { status: 'available' });
+      await cancelChallenge(sentChallengeId, actorUid, sentChallengeTo);
     } catch (_) {}
     clearPendingChallenge();
   };
@@ -332,6 +357,8 @@ export default function HomeScreen() {
     if (!user) return false;
     if (user.status !== 'available') return false;
     if (target.status !== 'available') return false;
+    if ((user as any).activeChallengeId) return false;
+    if ((target as any).activeChallengeId) return false;
     if (challenging !== null) return false;
     if (user.challengeBlockedUntil && Date.now() < user.challengeBlockedUntil) return false;
     return true;
@@ -385,6 +412,12 @@ export default function HomeScreen() {
           </View>
         </View>
       </View>
+
+      {challengeNotice && (
+        <View style={styles.challengeNoticeBox}>
+          <Text style={styles.challengeNoticeText}>{challengeNotice}</Text>
+        </View>
+      )}
 
       {/* Stats bar — 5 columnas: Puntos / Victorias / Rango / En línea / Gemas */}
       <View style={styles.statsBar}>
@@ -643,6 +676,22 @@ const createStyles = (COLORS: any) => StyleSheet.create({
     paddingVertical: 3,
   },
   statusPillText: { fontSize: 10, fontWeight: 'bold', letterSpacing: 1 },
+  challengeNoticeBox: {
+    marginBottom: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.warning,
+    backgroundColor: COLORS.warning + '1A',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+  },
+  challengeNoticeText: {
+    color: COLORS.warning,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
   statsBar: {
     flexDirection: 'row',
     backgroundColor: COLORS.surface,

@@ -1,14 +1,10 @@
 import {
   doc,
-  setDoc,
-  updateDoc,
   onSnapshot,
   query,
   collection,
   where,
-  serverTimestamp,
   runTransaction,
-  getDoc,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { createGame } from './game';
@@ -42,7 +38,6 @@ export interface Challenge {
 }
 
 const CHALLENGE_TIMEOUT_MS = 30 * 1000;
-const BLOCK_ON_REJECT_MS = 30 * 60 * 1000;
 const POINTS_NO_ACCEPT = -50;
 
 // Mapa de timers activos por challengeId para permitir su cancelación
@@ -69,8 +64,12 @@ export const sendChallenge = async (
   fromBoardTheme: string | null = null
 ): Promise<string> => {
   if (!fromUid || !toUid) throw new Error('INVALID_CHALLENGE_USERS');
+  if (fromUid === toUid) throw new Error('INVALID_CHALLENGE_TARGET');
   const challengeId = generateId();
   const now = Date.now();
+  const challengeRef = doc(db, 'challenges', challengeId);
+  const fromRef = doc(db, 'users', fromUid);
+  const toRef = doc(db, 'users', toUid);
 
   const challenge: Challenge = {
     challengeId,
@@ -89,9 +88,32 @@ export const sendChallenge = async (
     expiresAt: now + CHALLENGE_TIMEOUT_MS,
   };
 
-  await setDoc(doc(db, 'challenges', challengeId), challenge);
-  await updateDoc(doc(db, 'users', fromUid), { status: 'challenged' });
-  await updateDoc(doc(db, 'users', toUid), { status: 'challenged' });
+  await runTransaction(db, async (transaction) => {
+    const [fromSnap, toSnap] = await Promise.all([
+      transaction.get(fromRef),
+      transaction.get(toRef),
+    ]);
+
+    if (!fromSnap.exists() || !toSnap.exists()) throw new Error('CHALLENGE_USER_NOT_FOUND');
+
+    const fromData = fromSnap.data() as any;
+    const toData = toSnap.data() as any;
+
+    if (fromData?.status !== 'available') throw new Error('FROM_NOT_AVAILABLE');
+    if (toData?.status !== 'available') throw new Error('TARGET_NOT_AVAILABLE');
+    if (fromData?.activeChallengeId) throw new Error('FROM_ALREADY_CHALLENGED');
+    if (toData?.activeChallengeId) throw new Error('TARGET_ALREADY_CHALLENGED');
+
+    transaction.set(challengeRef, challenge);
+    transaction.update(fromRef, {
+      status: 'challenged',
+      activeChallengeId: challengeId,
+    });
+    transaction.update(toRef, {
+      status: 'challenged',
+      activeChallengeId: challengeId,
+    });
+  });
 
   // Enviar push al retado (funciona en background)
   sendPushToUser(
@@ -125,13 +147,37 @@ export const acceptChallenge = async (
   if (!challenge.from || !challenge.to) throw new Error('INVALID_CHALLENGE_USERS');
   cancelChallengeTimer(challengeId);
   const gameId = generateId();
+  const challengeRef = doc(db, 'challenges', challengeId);
+  const fromRef = doc(db, 'users', challenge.from);
+  const toRef = doc(db, 'users', challenge.to);
 
-  // Guardar gameId en el challenge ANTES de crear el game,
-  // así el retador (quien escucha onSnapshot en el doc) puede leerlo directamente
-  // sin necesidad de queries compuestas con índices.
-  await updateDoc(doc(db, 'challenges', challengeId), {
-    status: 'accepted',
-    gameId,
+  await runTransaction(db, async (transaction) => {
+    const [challengeSnap, fromSnap, toSnap] = await Promise.all([
+      transaction.get(challengeRef),
+      transaction.get(fromRef),
+      transaction.get(toRef),
+    ]);
+
+    if (!challengeSnap.exists()) throw new Error('CHALLENGE_NOT_FOUND');
+    const liveChallenge = challengeSnap.data() as Challenge;
+    if (liveChallenge.status !== 'pending') {
+      throw new Error('CHALLENGE_NOT_PENDING');
+    }
+
+    if (!fromSnap.exists() || !toSnap.exists()) throw new Error('CHALLENGE_USER_NOT_FOUND');
+
+    transaction.update(challengeRef, {
+      status: 'accepted',
+      gameId,
+    });
+    transaction.update(fromRef, {
+      status: 'in_game',
+      activeChallengeId: null,
+    });
+    transaction.update(toRef, {
+      status: 'in_game',
+      activeChallengeId: null,
+    });
   });
 
   await createGame(
@@ -162,10 +208,33 @@ export const rejectChallenge = async (
   toUid: string
 ): Promise<void> => {
   cancelChallengeTimer(challengeId);
-  await updateDoc(doc(db, 'challenges', challengeId), { status: 'rejected' });
-  // Penalizar al receptor que rechaza (toUid)
-  await penalizeNoAccept(toUid);
-  await updateDoc(doc(db, 'users', fromUid), { status: 'available' });
+  await runTransaction(db, async (transaction) => {
+    const challengeRef = doc(db, 'challenges', challengeId);
+    const fromRef = doc(db, 'users', fromUid);
+    const toRef = doc(db, 'users', toUid);
+
+    const [challengeSnap, fromSnap, toSnap] = await Promise.all([
+      transaction.get(challengeRef),
+      transaction.get(fromRef),
+      transaction.get(toRef),
+    ]);
+    if (!challengeSnap.exists() || !fromSnap.exists() || !toSnap.exists()) return;
+
+    const challengeData = challengeSnap.data() as Challenge;
+    if (challengeData.status !== 'pending') return;
+
+    const toData = toSnap.data() as any;
+    const newPoints = Math.max(0, (toData.points || 0) + POINTS_NO_ACCEPT);
+    transaction.update(challengeRef, { status: 'rejected' });
+    transaction.update(fromRef, { status: 'available', activeChallengeId: null });
+    transaction.update(toRef, {
+      points: newPoints,
+      rank: calculateRank(newPoints),
+      challengeBlockedUntil: null,
+      status: 'available',
+      activeChallengeId: null,
+    });
+  });
 };
 
 export const expireChallenge = async (
@@ -173,32 +242,59 @@ export const expireChallenge = async (
   fromUid: string,
   toUid: string
 ): Promise<void> => {
-  const snap = await getDoc(doc(db, 'challenges', challengeId));
-  if (!snap.exists()) return;
-  if (snap.data().status !== 'pending') return;
-
-  await updateDoc(doc(db, 'challenges', challengeId), { status: 'expired' });
-  // Penalizar al que no aceptó (toUid) y liberar al retador (fromUid)
-  await penalizeNoAccept(toUid);
-  // penalizeNoAccept pone status 'blocked' al toUid, solo liberar al fromUid
-  await updateDoc(doc(db, 'users', fromUid), { status: 'available' });
-};
-
-const penalizeNoAccept = async (uid: string): Promise<void> => {
   await runTransaction(db, async (transaction) => {
-    const userRef = doc(db, 'users', uid);
-    const snap = await transaction.get(userRef);
-    if (!snap.exists()) return;
-    const data = snap.data();
-    const newPoints = Math.max(0, (data.points || 0) + POINTS_NO_ACCEPT);
-    const blockUntil = Date.now() + BLOCK_ON_REJECT_MS;
-    transaction.update(userRef, {
+    const challengeRef = doc(db, 'challenges', challengeId);
+    const fromRef = doc(db, 'users', fromUid);
+    const toRef = doc(db, 'users', toUid);
+
+    const [challengeSnap, fromSnap, toSnap] = await Promise.all([
+      transaction.get(challengeRef),
+      transaction.get(fromRef),
+      transaction.get(toRef),
+    ]);
+    if (!challengeSnap.exists() || !fromSnap.exists() || !toSnap.exists()) return;
+
+    const challengeData = challengeSnap.data() as Challenge;
+    if (challengeData.status !== 'pending') return;
+
+    const toData = toSnap.data() as any;
+    const newPoints = Math.max(0, (toData.points || 0) + POINTS_NO_ACCEPT);
+    transaction.update(challengeRef, { status: 'expired' });
+    transaction.update(fromRef, { status: 'available', activeChallengeId: null });
+    transaction.update(toRef, {
       points: newPoints,
       rank: calculateRank(newPoints),
-      // Un solo campo unificado que usan tanto home.tsx como blocked.tsx
-      challengeBlockedUntil: blockUntil,
-      status: 'blocked',
+      challengeBlockedUntil: null,
+      status: 'available',
+      activeChallengeId: null,
     });
+  });
+};
+
+export const cancelChallenge = async (
+  challengeId: string,
+  fromUid: string,
+  toUid: string
+): Promise<void> => {
+  cancelChallengeTimer(challengeId);
+  await runTransaction(db, async (transaction) => {
+    const challengeRef = doc(db, 'challenges', challengeId);
+    const fromRef = doc(db, 'users', fromUid);
+    const toRef = doc(db, 'users', toUid);
+
+    const [challengeSnap, fromSnap, toSnap] = await Promise.all([
+      transaction.get(challengeRef),
+      transaction.get(fromRef),
+      transaction.get(toRef),
+    ]);
+    if (!challengeSnap.exists() || !fromSnap.exists() || !toSnap.exists()) return;
+
+    const challengeData = challengeSnap.data() as Challenge;
+    if (challengeData.status !== 'pending') return;
+
+    transaction.update(challengeRef, { status: 'expired' });
+    transaction.update(fromRef, { status: 'available', activeChallengeId: null });
+    transaction.update(toRef, { status: 'available', activeChallengeId: null });
   });
 };
 
