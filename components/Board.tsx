@@ -107,6 +107,7 @@ interface BoardProps {
   teleportMode?: boolean;
   teleportFrom?: number | null;
   theme?: string | null;
+  boardSize?: number;
 }
 
 const AnimatedCell: React.FC<{
@@ -120,7 +121,8 @@ const AnimatedCell: React.FC<{
   isTeleportSelected: boolean;
   isTeleportTarget: boolean;
   themeConfig: ThemeConfig;
-}> = ({ value, index, onPress, disabled, isWinning, confusionActive, mySymbol, isTeleportSelected, isTeleportTarget, themeConfig }) => {
+  symbolSize: number;
+}> = ({ value, index, onPress, disabled, isWinning, confusionActive, mySymbol, isTeleportSelected, isTeleportTarget, themeConfig, symbolSize }) => {
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -154,6 +156,7 @@ const AnimatedCell: React.FC<{
         {displayValue !== '' && (
           <Text style={[
             styles.symbol,
+            { fontSize: symbolSize },
             displayValue === 'X'
               ? { color: themeConfig.symbolX, textShadowColor: themeConfig.symbolX, textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 10 }
               : { color: themeConfig.symbolO, textShadowColor: themeConfig.symbolO, textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 10 },
@@ -177,14 +180,17 @@ const Board: React.FC<BoardProps> = ({
   teleportMode = false,
   teleportFrom = null,
   theme,
+  boardSize = 300,
 }) => {
   const COLORS = useColors();
   const themeConfig = getThemeConfig(theme, COLORS);
+  const symbolSize = Math.max(34, Math.round(boardSize * 0.17));
 
   return (
     <View style={[
       styles.board,
       { borderColor: themeConfig.boardBorder, backgroundColor: themeConfig.boardBg },
+      { width: boardSize, height: boardSize },
     ]}>
       {board.map((cell, index) => (
         <AnimatedCell
@@ -199,6 +205,7 @@ const Board: React.FC<BoardProps> = ({
           isTeleportSelected={teleportMode && teleportFrom === index}
           isTeleportTarget={teleportMode && teleportFrom !== null && cell === ''}
           themeConfig={themeConfig}
+          symbolSize={symbolSize}
         />
       ))}
     </View>
@@ -207,8 +214,6 @@ const Board: React.FC<BoardProps> = ({
 
 const styles = StyleSheet.create({
   board: {
-    width: 300,
-    height: 300,
     flexDirection: 'row',
     flexWrap: 'wrap',
     borderRadius: 12,

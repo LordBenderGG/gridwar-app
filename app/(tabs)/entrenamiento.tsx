@@ -9,7 +9,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Modal,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, useWindowDimensions,
 } from 'react-native';
 import AdBanner from '../../components/AdBanner';
 import Animated, {
@@ -20,7 +20,6 @@ import { useAuthStore } from '../../store/authStore';
 import Board from '../../components/Board';
 import Timer from '../../components/Timer';
 import WildcardBar from '../../components/WildcardBar';
-import { AVATARS } from '../../components/AvatarPicker';
 import { useColors } from '../../hooks/useColors';
 import { TIMER_TOTAL } from '../../constants/theme';
 import { checkWinner, isBoardFull, CellValue } from '../../services/game';
@@ -172,8 +171,11 @@ const createStyles = (COLORS: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  playingContent: {
     paddingTop: 50,
     paddingHorizontal: 16,
+    paddingBottom: 20,
   },
   header: {
     flexDirection: 'row',
@@ -498,6 +500,12 @@ export default function TrainingScreen() {
   const { user } = useAuthStore();
   const COLORS = useColors();
   const styles = useMemo(() => createStyles(COLORS), [COLORS]);
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const boardSize = useMemo(() => {
+    const byWidth = Math.max(220, Math.min(340, screenWidth - 36));
+    const byHeight = Math.max(210, Math.min(330, Math.floor(screenHeight * 0.34)));
+    return Math.min(byWidth, byHeight);
+  }, [screenWidth, screenHeight]);
 
   const [phase, setPhase] = useState<Phase>('menu');
   const [difficulty, setDifficulty] = useState<Difficulty>(() =>
@@ -526,7 +534,6 @@ export default function TrainingScreen() {
 
   // Wildcard alert banner
   const [wildcardAlert, setWildcardAlert] = useState<{ message: string; color: string } | null>(null);
-  const [showWildcardsModal, setShowWildcardsModal] = useState(false);
   const TRAINING_EMOJIS = ['😎', '🔥', '😂', '💀', '👏', '🫡'];
   const [myEmoji, setMyEmoji] = useState<string | null>(null);
   const [aiEmoji, setAiEmoji] = useState<string | null>(null);
@@ -551,11 +558,6 @@ export default function TrainingScreen() {
       setAiEmoji(aiPick);
       setTimeout(() => setAiEmoji(null), 1800);
     }, 500);
-  };
-
-  const handleWildcardFromModal = (wcId: string) => {
-    setShowWildcardsModal(false);
-    handleWildcard(wcId);
   };
 
   // Keep refs in sync
@@ -1016,7 +1018,6 @@ export default function TrainingScreen() {
     teleportFromRef.current = null;
     setTeleportMode(false);
     setTeleportFrom(null);
-    setShowWildcardsModal(false);
     setMyEmoji(null);
     setAiEmoji(null);
     finishingRef.current = false;
@@ -1034,7 +1035,6 @@ export default function TrainingScreen() {
     teleportFromRef.current = null;
     setTeleportMode(false);
     setTeleportFrom(null);
-    setShowWildcardsModal(false);
     setMyEmoji(null);
     setAiEmoji(null);
     setPhase('menu');
@@ -1116,6 +1116,10 @@ export default function TrainingScreen() {
 
   return (
     <View style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.playingContent}
+        showsVerticalScrollIndicator={false}
+      >
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={goToMenu} style={styles.backBtn}>
@@ -1135,30 +1139,6 @@ export default function TrainingScreen() {
         <View style={styles.scoreBlock}>
           <Text style={styles.scoreLabel}>{t('ia.iaScore')}</Text>
           <Text style={[styles.scoreValue, { color: COLORS.danger }]}>{aiScore}</Text>
-        </View>
-      </View>
-
-      <View style={styles.duelRow}>
-        <View style={styles.duelCard}>
-          <View style={[styles.duelAvatarRing, { borderColor: COLORS.primary }]}> 
-            <Image
-              source={user?.photoURL ? { uri: user.photoURL } : AVATARS[user?.avatar || 'avatar_1']}
-              style={styles.duelAvatar}
-            />
-          </View>
-          <Text style={styles.duelName}>{user?.username || 'Jugador'}</Text>
-          <Text style={styles.duelTag}>TU</Text>
-        </View>
-        <Text style={styles.duelVs}>VS</Text>
-        <View style={styles.duelCard}>
-          <View style={[styles.duelAvatarRing, { borderColor: COLORS.danger }]}> 
-            <Image source={AVATARS['avatar_8']} style={styles.duelAvatar} />
-            <View style={styles.aiBadge}>
-              <Text style={styles.aiBadgeText}>🤖</Text>
-            </View>
-          </View>
-          <Text style={styles.duelName}>IA GRIDWAR</Text>
-          <Text style={styles.duelTag}>{diffLabel(difficulty)}</Text>
         </View>
       </View>
 
@@ -1223,6 +1203,7 @@ export default function TrainingScreen() {
           board={gs.board}
           onCellPress={handleCellPress}
           disabled={!gs.isPlayerTurn || finishingRef.current}
+          boardSize={boardSize}
           confusionActive={isConfused}
           mySymbol="X"
           winningCells={winCells}
@@ -1232,9 +1213,15 @@ export default function TrainingScreen() {
         />
       </Animated.View>
 
-      <TouchableOpacity style={styles.wildcardsOpenBtn} onPress={() => setShowWildcardsModal(true)}>
-        <Text style={styles.wildcardsOpenBtnText}>{t('training.showWildcards')}</Text>
-      </TouchableOpacity>
+      <View style={styles.wildcardsContainer}>
+        <WildcardBar
+          wildcards={{ turbo: 99, time_reduce: 99, teleport: 99, shield: 99, confusion: 99, sabotage: 99, freeze: 99, earthquake: 99 }}
+          wildcardUsed={gs.wildcardUsed}
+          isMyTurn={gs.isPlayerTurn}
+          shieldActive={false}
+          onUseWildcard={handleWildcard}
+        />
+      </View>
 
       <View style={styles.emojiChatRow}>
         {TRAINING_EMOJIS.map((emoji) => (
@@ -1243,33 +1230,8 @@ export default function TrainingScreen() {
           </TouchableOpacity>
         ))}
       </View>
+      </ScrollView>
 
-      <Modal
-        visible={showWildcardsModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowWildcardsModal(false)}
-      >
-        <TouchableOpacity activeOpacity={1} style={styles.modalBackdrop} onPress={() => setShowWildcardsModal(false)}>
-          <TouchableOpacity activeOpacity={1} style={styles.modalCard} onPress={() => {}}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{t('profile.wildcards')}</Text>
-              <TouchableOpacity onPress={() => setShowWildcardsModal(false)}>
-                <Text style={styles.modalClose}>Cerrar</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.wildcardsContainer}>
-              <WildcardBar
-                wildcards={{ turbo: 99, time_reduce: 99, teleport: 99, shield: 99, confusion: 99, sabotage: 99, freeze: 99, earthquake: 99 }}
-                wildcardUsed={gs.wildcardUsed}
-                isMyTurn={gs.isPlayerTurn}
-                shieldActive={false}
-                onUseWildcard={handleWildcardFromModal}
-              />
-            </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
     </View>
   );
 }

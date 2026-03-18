@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Alert, Image,
+  View, Text, StyleSheet, TouchableOpacity, Alert, Image, ScrollView, useWindowDimensions,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Animated, {
@@ -809,9 +809,19 @@ export default function GameScreen() {
   const opponentDisplayNameColor = resolveNameColor(opponentNameColor ?? null);
 
   const isConfused = gameState.confusionActive && gameState.confusionTarget === myUid;
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const boardSize = useMemo(() => {
+    const byWidth = Math.max(220, Math.min(340, screenWidth - 36));
+    const byHeight = Math.max(210, Math.min(330, Math.floor(screenHeight * 0.38)));
+    return Math.min(byWidth, byHeight);
+  }, [screenWidth, screenHeight]);
 
   return (
     <Animated.View style={[styles.container, shakeStyle]}>
+      <ScrollView
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      >
       {/* Ronda y marcador */}
       <View style={styles.scoreRow}>
         <Text style={styles.roundText}>{t('game.round', { round: gameDoc.round })}</Text>
@@ -892,6 +902,7 @@ export default function GameScreen() {
           board={gameState.board}
           onCellPress={handleCellPress}
           disabled={!isMyTurn}
+          boardSize={boardSize}
           confusionActive={isConfused}
           mySymbol={mySymbol}
           winningCells={[]}
@@ -956,12 +967,14 @@ export default function GameScreen() {
       <TouchableOpacity style={styles.forfeitBtn} onPress={handleForfeit}>
         <Text style={styles.forfeitText}>{t('game.forfeit')}</Text>
       </TouchableOpacity>
+      </ScrollView>
     </Animated.View>
   );
 }
 
 const createStyles = (COLORS: any) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background, paddingTop: 50, paddingHorizontal: 16 },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  contentContainer: { paddingTop: 50, paddingHorizontal: 16, paddingBottom: 20 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background },
   loading: { color: COLORS.textSecondary, fontSize: 16 },
   recoverBtn: {
