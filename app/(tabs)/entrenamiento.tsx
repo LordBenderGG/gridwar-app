@@ -17,7 +17,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/authStore';
-import Board from '../../components/Board';
+import Board, { BoardEffectType } from '../../components/Board';
 import Timer from '../../components/Timer';
 import WildcardBar from '../../components/WildcardBar';
 import { useColors } from '../../hooks/useColors';
@@ -176,6 +176,10 @@ const createStyles = (COLORS: any) => StyleSheet.create({
     paddingTop: 50,
     paddingHorizontal: 16,
     paddingBottom: 20,
+  },
+  playingContentCompact: {
+    paddingTop: 18,
+    paddingBottom: 124,
   },
   header: {
     flexDirection: 'row',
@@ -351,8 +355,14 @@ const createStyles = (COLORS: any) => StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  boardContainerCompact: {
+    marginBottom: 10,
+  },
   wildcardsContainer: {
     marginBottom: 12,
+  },
+  wildcardsContainerCompact: {
+    marginBottom: 6,
   },
   wildcardsOpenBtn: {
     width: '100%',
@@ -374,6 +384,9 @@ const createStyles = (COLORS: any) => StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     marginBottom: 10,
+  },
+  emojiChatRowCompact: {
+    marginBottom: 2,
   },
   emojiBtn: {
     width: 34,
@@ -501,11 +514,12 @@ export default function TrainingScreen() {
   const COLORS = useColors();
   const styles = useMemo(() => createStyles(COLORS), [COLORS]);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const isCompact = screenHeight < 760;
   const boardSize = useMemo(() => {
-    const byWidth = Math.max(220, Math.min(340, screenWidth - 36));
-    const byHeight = Math.max(210, Math.min(330, Math.floor(screenHeight * 0.34)));
+    const byWidth = Math.max(200, Math.min(isCompact ? 300 : 340, screenWidth - 36));
+    const byHeight = Math.max(180, Math.min(isCompact ? 260 : 330, Math.floor(screenHeight * (isCompact ? 0.28 : 0.34))));
     return Math.min(byWidth, byHeight);
-  }, [screenWidth, screenHeight]);
+  }, [screenWidth, screenHeight, isCompact]);
 
   const [phase, setPhase] = useState<Phase>('menu');
   const [difficulty, setDifficulty] = useState<Difficulty>(() =>
@@ -534,12 +548,14 @@ export default function TrainingScreen() {
 
   // Wildcard alert banner
   const [wildcardAlert, setWildcardAlert] = useState<{ message: string; color: string } | null>(null);
+  const [boardEffect, setBoardEffect] = useState<BoardEffectType | null>(null);
   const TRAINING_EMOJIS = ['😎', '🔥', '😂', '💀', '👏', '🫡'];
   const [myEmoji, setMyEmoji] = useState<string | null>(null);
   const [aiEmoji, setAiEmoji] = useState<string | null>(null);
 
   const timerStartRef = useRef<number>(Date.now());
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const boardEffectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const finishingRef = useRef(false);
   const gsRef = useRef<TrainingState>(INITIAL_STATE());
   const playerScoreRef = useRef(0);
@@ -571,6 +587,12 @@ export default function TrainingScreen() {
     setTimeout(() => setWildcardAlert(null), 2500);
   };
 
+  const triggerBoardEffect = (effect: BoardEffectType) => {
+    if (boardEffectTimeoutRef.current) clearTimeout(boardEffectTimeoutRef.current);
+    setBoardEffect(effect);
+    boardEffectTimeoutRef.current = setTimeout(() => setBoardEffect(null), 900);
+  };
+
   // ── Timer ────────────────────────────────────────────────────────────────
   const startTimer = useCallback((overrideSeconds?: number) => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -599,7 +621,10 @@ export default function TrainingScreen() {
   };
 
   // Cleanup on unmount
-  useEffect(() => () => { stopTimer(); }, []);
+  useEffect(() => () => {
+    stopTimer();
+    if (boardEffectTimeoutRef.current) clearTimeout(boardEffectTimeoutRef.current);
+  }, []);
 
   // ── Handle time up ───────────────────────────────────────────────────────
   const handleTimeUp = useCallback(() => {
@@ -718,17 +743,21 @@ export default function TrainingScreen() {
     // Si el jugador tiene escudo, bloquear el comodín de la IA
     if (state.shieldActive) {
       showAlert(t('training.shieldBlockedAI'), '#34C759');
+      triggerBoardEffect('shield');
       return { ...state, shieldActive: false };
     }
     switch (wcId) {
       case 'time_reduce':
         showAlert(t('game.alertTimerReduced'), '#FF6B35');
+        triggerBoardEffect('time_reduce');
         return { ...state, rivalTimerReduced: true };
       case 'confusion':
         showAlert(t('game.alertConfusion'), '#FF69B4');
+        triggerBoardEffect('confusion');
         return { ...state, confusionActive: true };
       case 'freeze':
         showAlert(t('training.aiFreezeAlert'), '#00BFFF');
+        triggerBoardEffect('freeze');
         return { ...state, frozenPlayer: true };
       case 'earthquake': {
         const board = [...state.board] as CellValue[];
@@ -751,6 +780,7 @@ export default function TrainingScreen() {
           withTiming(0, { duration: 60 }),
         );
         showAlert(t('game.alertEarthquake'), '#FF8C00');
+        triggerBoardEffect('earthquake');
         return { ...state, board };
       }
       default:
@@ -871,6 +901,7 @@ export default function TrainingScreen() {
         };
         gsRef.current = nextGs;
         setGs(nextGs);
+        triggerBoardEffect('teleport');
         resolveRound(newBoard, nextGs);
         return;
       }
@@ -911,6 +942,7 @@ export default function TrainingScreen() {
       case 'turbo':
         next = { ...next, turboActive: true };
         showAlert(t('game.alertTurbo'), '#FFD700');
+        triggerBoardEffect('turbo');
         // Reiniciar el timer con tiempo extendido
         startTimer(TIMER_TOTAL + 15);
         break;
@@ -924,11 +956,13 @@ export default function TrainingScreen() {
       case 'freeze':
         next = { ...next, frozenAI: true };
         showAlert(t('game.alertFreeze'), '#00BFFF');
+        triggerBoardEffect('freeze');
         break;
 
       case 'shield':
         next = { ...next, shieldActive: true };
         showAlert(t('game.alertShield'), '#34C759');
+        triggerBoardEffect('shield');
         break;
 
       case 'teleport': {
@@ -939,6 +973,7 @@ export default function TrainingScreen() {
           break;
         }
         next = { ...next, teleportPending: true };
+        triggerBoardEffect('teleport');
         teleportModeRef.current = true;
         teleportFromRef.current = null;
         setTeleportMode(true);
@@ -949,6 +984,7 @@ export default function TrainingScreen() {
       case 'confusion':
         next = { ...next, aiConfused: true };
         showAlert(t('training.aiConfused'), '#FF69B4');
+        triggerBoardEffect('confusion');
         break;
 
       case 'sabotage': {
@@ -963,6 +999,7 @@ export default function TrainingScreen() {
         newBoard[victim] = '';
         next = { ...next, board: newBoard };
         showAlert(t('training.sabotageSuccess'), '#FF4444');
+        triggerBoardEffect('sabotage');
         break;
       }
 
@@ -987,6 +1024,7 @@ export default function TrainingScreen() {
             withTiming(0, { duration: 60 }),
           );
           showAlert(t('game.alertEarthquake'), '#FF8C00');
+          triggerBoardEffect('earthquake');
         } else {
           showAlert(t('training.earthquakeNoTarget'), '#FF8C00');
           next = { ...next, wildcardUsed: false };
@@ -1117,7 +1155,7 @@ export default function TrainingScreen() {
   return (
     <View style={styles.container}>
       <ScrollView
-        contentContainerStyle={styles.playingContent}
+        contentContainerStyle={[styles.playingContent, isCompact && styles.playingContentCompact]}
         showsVerticalScrollIndicator={false}
       >
       {/* Header */}
@@ -1147,7 +1185,7 @@ export default function TrainingScreen() {
         {gs.isPlayerTurn ? t('training.yourTurn') : t('training.iaTurn')}
       </Text>
 
-      <AdBanner placement="training" style={{ marginBottom: 8 }} />
+      {!isCompact && <AdBanner placement="training" style={{ marginBottom: 8 }} />}
 
       {/* Timer (only shown on player's turn) */}
       {gs.isPlayerTurn && (
@@ -1198,12 +1236,13 @@ export default function TrainingScreen() {
       )}
 
       {/* Board */}
-      <Animated.View style={[styles.boardContainer, boardShakeStyle]}>
+      <Animated.View style={[styles.boardContainer, isCompact && styles.boardContainerCompact, boardShakeStyle]}>
         <Board
           board={gs.board}
           onCellPress={handleCellPress}
           disabled={!gs.isPlayerTurn || finishingRef.current}
           boardSize={boardSize}
+          effectType={boardEffect}
           confusionActive={isConfused}
           mySymbol="X"
           winningCells={winCells}
@@ -1213,17 +1252,18 @@ export default function TrainingScreen() {
         />
       </Animated.View>
 
-      <View style={styles.wildcardsContainer}>
+      <View style={[styles.wildcardsContainer, isCompact && styles.wildcardsContainerCompact]}>
         <WildcardBar
           wildcards={{ turbo: 99, time_reduce: 99, teleport: 99, shield: 99, confusion: 99, sabotage: 99, freeze: 99, earthquake: 99 }}
           wildcardUsed={gs.wildcardUsed}
           isMyTurn={gs.isPlayerTurn}
           shieldActive={false}
+          compact={true}
           onUseWildcard={handleWildcard}
         />
       </View>
 
-      <View style={styles.emojiChatRow}>
+      <View style={[styles.emojiChatRow, isCompact && styles.emojiChatRowCompact]}>
         {TRAINING_EMOJIS.map((emoji) => (
           <TouchableOpacity key={emoji} style={styles.emojiBtn} onPress={() => sendEmojiToChat(emoji)}>
             <Text style={styles.emojiBtnText}>{emoji}</Text>

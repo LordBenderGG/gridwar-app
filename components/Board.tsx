@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { View, TouchableOpacity, StyleSheet, Text } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -9,6 +9,16 @@ import Animated, {
 } from 'react-native-reanimated';
 import { CellValue } from '../services/game';
 import { useColors } from '../hooks/useColors';
+
+export type BoardEffectType =
+  | 'freeze'
+  | 'shield'
+  | 'confusion'
+  | 'earthquake'
+  | 'teleport'
+  | 'turbo'
+  | 'time_reduce'
+  | 'sabotage';
 
 // ─── Temas de tablero ─────────────────────────────────────────────────────────
 export type BoardTheme = 'default' | 'theme_neon' | 'theme_fire' | 'theme_ice' | 'theme_matrix' | 'theme_dark' | 'theme_wood';
@@ -108,6 +118,7 @@ interface BoardProps {
   teleportFrom?: number | null;
   theme?: string | null;
   boardSize?: number;
+  effectType?: BoardEffectType | null;
 }
 
 const AnimatedCell: React.FC<{
@@ -181,10 +192,48 @@ const Board: React.FC<BoardProps> = ({
   teleportFrom = null,
   theme,
   boardSize = 300,
+  effectType = null,
 }) => {
   const COLORS = useColors();
   const themeConfig = getThemeConfig(theme, COLORS);
   const symbolSize = Math.max(34, Math.round(boardSize * 0.17));
+  const fxOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    if (!effectType) return;
+    fxOpacity.value = withSequence(
+      withTiming(0.3, { duration: 120 }),
+      withTiming(0.08, { duration: 350 }),
+      withTiming(0, { duration: 320 })
+    );
+  }, [effectType]);
+
+  const fxStyle = useAnimatedStyle(() => ({
+    opacity: fxOpacity.value,
+  }));
+
+  const effectConfig = useMemo(() => {
+    switch (effectType) {
+      case 'freeze':
+        return { color: '#5AC8FA', label: '❄ FREEZE' };
+      case 'shield':
+        return { color: '#34C759', label: '🛡 SHIELD' };
+      case 'confusion':
+        return { color: '#FF69B4', label: '🌀 CONFUSION' };
+      case 'earthquake':
+        return { color: '#FF8C00', label: '🌋 EARTHQUAKE' };
+      case 'teleport':
+        return { color: '#00F5FF', label: '🌀 TELEPORT' };
+      case 'turbo':
+        return { color: '#FFD700', label: '⚡ TURBO' };
+      case 'time_reduce':
+        return { color: '#FF6B35', label: '⏱ TIME REDUCE' };
+      case 'sabotage':
+        return { color: '#FF3B30', label: '💣 SABOTAGE' };
+      default:
+        return null;
+    }
+  }, [effectType]);
 
   return (
     <View style={[
@@ -208,6 +257,19 @@ const Board: React.FC<BoardProps> = ({
           symbolSize={symbolSize}
         />
       ))}
+
+      {effectConfig && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.effectOverlay,
+            { backgroundColor: effectConfig.color },
+            fxStyle,
+          ]}
+        >
+          <Text style={[styles.effectLabel, { color: effectConfig.color }]}>{effectConfig.label}</Text>
+        </Animated.View>
+      )}
     </View>
   );
 };
@@ -239,6 +301,21 @@ const styles = StyleSheet.create({
   },
   winningSymbol: {
     textShadowRadius: 20,
+  },
+  effectOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    paddingTop: 8,
+  },
+  effectLabel: {
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
 });
 

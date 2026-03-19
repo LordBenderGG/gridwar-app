@@ -24,6 +24,7 @@ interface WildcardBarProps {
   isMyTurn: boolean;
   shieldActive: boolean;
   onUseWildcard: (wildcardId: string) => void;
+  compact?: boolean;
 }
 
 const createStyles = (COLORS: any) => StyleSheet.create({
@@ -95,6 +96,7 @@ const WildcardBar: React.FC<WildcardBarProps> = ({
   isMyTurn,
   shieldActive,
   onUseWildcard,
+  compact = false,
 }) => {
   const { t } = useTranslation();
   const COLORS = useColors();
@@ -107,7 +109,7 @@ const WildcardBar: React.FC<WildcardBarProps> = ({
     isMyTurn && !wildcardUsed && getCount(w.id) > 0 && !shieldActive;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, compact && { padding: 8 }] }>
       <View style={styles.header}>
         <Text style={styles.title}>{t('wildcards.title').toUpperCase()}</Text>
       </View>
@@ -124,18 +126,19 @@ const WildcardBar: React.FC<WildcardBarProps> = ({
               key={w.id}
               style={[
                 styles.card,
+                compact && { width: 66, padding: 7, marginRight: 6 },
                 { borderColor: w.color },
                 !available && styles.cardDisabled,
               ]}
               onPress={() => onUseWildcard(w.id)}
               disabled={!available}
             >
-              <Text style={styles.icon}>{w.icon}</Text>
-              <Text style={[styles.cardName, { color: w.color }]} numberOfLines={1}>
+              <Text style={[styles.icon, compact && { fontSize: 18, marginBottom: 2 }]}>{w.icon}</Text>
+              <Text style={[styles.cardName, compact && { fontSize: 8, marginBottom: 2 }, { color: w.color }]} numberOfLines={1}>
                 {t(`wildcards.${keyPrefix}Name`)}
               </Text>
-              <View style={styles.countBadge}>
-                <Text style={[styles.countText, count === 0 && styles.countZero]}>
+              <View style={[styles.countBadge, compact && { paddingHorizontal: 5, paddingVertical: 1 }]}>
+                <Text style={[styles.countText, compact && { fontSize: 9 }, count === 0 && styles.countZero]}>
                   x{count}
                 </Text>
               </View>

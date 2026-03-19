@@ -18,7 +18,7 @@ import {
 import { applyWildcard, applyTeleportMove } from '../../services/wildcards';
 import { updateMissionProgress } from '../../services/missions';
 import { useAuthStore } from '../../store/authStore';
-import Board from '../../components/Board';
+import Board, { BoardEffectType } from '../../components/Board';
 import Timer from '../../components/Timer';
 import WildcardBar from '../../components/WildcardBar';
 import { AVATARS } from '../../components/AvatarPicker';
@@ -37,6 +37,13 @@ interface WildcardAlert {
 export default function GameScreen() {
   const COLORS = useColors();
   const styles = useMemo(() => createStyles(COLORS), [COLORS]);
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const boardSize = useMemo(() => {
+    const compact = screenHeight < 760;
+    const byWidth = Math.max(200, Math.min(compact ? 300 : 340, screenWidth - 36));
+    const byHeight = Math.max(180, Math.min(compact ? 270 : 330, Math.floor(screenHeight * (compact ? 0.30 : 0.38))));
+    return Math.min(byWidth, byHeight);
+  }, [screenWidth, screenHeight]);
   const { gameId, myUid: routeUidParam } = useLocalSearchParams<{ gameId: string; myUid?: string }>();
   const router = useRouter();
   const { user, updateUser } = useAuthStore();
@@ -52,6 +59,7 @@ export default function GameScreen() {
   const [shieldActive, setShieldActive] = useState(false);
   const [wildcardAlert, setWildcardAlert] = useState<WildcardAlert | null>(null);
   const [moveDebug, setMoveDebug] = useState<string>('');
+  const [boardEffect, setBoardEffect] = useState<BoardEffectType | null>(null);
 
   // ── Teletransporte ────────────────────────────────────────────────────
   // teleportMode: true cuando el jugador activó el comodín y debe elegir
@@ -66,6 +74,7 @@ export default function GameScreen() {
   const frozenSkipInProgressRef = useRef(false); // evita doble skipTurn cuando congelado
   const turnSkipInProgressRef = useRef(false);
   const noCombatClosingRef = useRef(false);
+  const resultRedirectedRef = useRef(false);
   const shakeAnim = useSharedValue(0);
   const boardShakeAnim = useSharedValue(0);
   // Guardamos la versión anterior de gameState para detectar cambios de flags
@@ -75,6 +84,7 @@ export default function GameScreen() {
   // Ref del gameDoc para acceder al valor más reciente dentro de callbacks/effects
   const gameDocRef = useRef<GameDoc | null>(null);
   const gameStateRef = useRef<GameState | null>(null);
+  const boardEffectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Chat emojis (Fase 1B) ─────────────────────────────────────────────
   const CHAT_EMOJIS = ['😂', '💀', '🤡', '😎', '🔥', '👏', '😴', '🫵'];
@@ -146,6 +156,12 @@ export default function GameScreen() {
     setMoveDebug(reason);
   };
 
+  const triggerBoardEffect = (effect: BoardEffectType) => {
+    if (boardEffectTimeoutRef.current) clearTimeout(boardEffectTimeoutRef.current);
+    setBoardEffect(effect);
+    boardEffectTimeoutRef.current = setTimeout(() => setBoardEffect(null), 950);
+  };
+
   const computeTurnDuration = (state: GameState) => {
     const turboBonus = state.turboActive && state.turboPlayer === myUid ? 10 : 0;
     const rivalReducedForMe =
@@ -162,6 +178,8 @@ export default function GameScreen() {
       gameDocRef.current = docData;
       setMySymbol(docData.player1 === myUid ? 'X' : 'O');
       if (docData.status === 'finished') {
+        if (resultRedirectedRef.current) return;
+        resultRedirectedRef.current = true;
         router.replace({
           pathname: '/game/resultado',
           params: {
@@ -191,18 +209,22 @@ export default function GameScreen() {
           && (!state.rivalTimerReducedTarget || state.rivalTimerReducedTarget === myUid)
         ) {
           showWildcardAlert(t('game.alertTimerReduced'), '#FF6B35');
+          triggerBoardEffect('time_reduce');
         }
         // Rival activó confusion → yo soy el objetivo
         if (!prev.confusionActive && state.confusionActive && state.confusionTarget === myUid) {
           showWildcardAlert(t('game.alertConfusion'), '#FF69B4');
+          triggerBoardEffect('confusion');
         }
         // Rival activó shield → yo tengo escudo activo en su contra
         if (!prev.shieldActive && state.shieldActive && state.shieldPlayer !== myUid) {
           showWildcardAlert(t('game.alertShieldRival'), '#34C759');
+          triggerBoardEffect('shield');
         }
         // Turbo activado por mí → confirmar visualmente
         if (!prev.turboActive && state.turboActive && state.turboPlayer === myUid) {
           showWildcardAlert(t('game.alertTurbo'), '#FFD700');
+          triggerBoardEffect('turbo');
         }
       }
 
@@ -238,6 +260,7 @@ export default function GameScreen() {
         if (!frozenSkipInProgressRef.current) {
           frozenSkipInProgressRef.current = true;
           showWildcardAlert(t('game.alertFrozen'), '#00BFFF');
+          triggerBoardEffect('freeze');
           const doc = gameDocRef.current;
           const opponentId = doc.player1 === myUid ? doc.player2 : doc.player1;
           setTimeout(() => {
@@ -282,6 +305,11 @@ export default function GameScreen() {
     gameStateRef.current = null;
     turnSkipInProgressRef.current = false;
     noCombatClosingRef.current = false;
+    if (boardEffectTimeoutRef.current) {
+      clearTimeout(boardEffectTimeoutRef.current);
+      boardEffectTimeoutRef.current = null;
+    }
+    setBoardEffect(null);
     if (roundUnlockTimeoutRef.current) {
       clearTimeout(roundUnlockTimeoutRef.current);
       roundUnlockTimeoutRef.current = null;
@@ -348,6 +376,10 @@ export default function GameScreen() {
   }, [gameId, gameDoc?.type, gameDoc?.round, gameDoc?.status, gameDoc?.player1, gameDoc?.player2, gameState?.idleTimeoutCount, gameState?.lastMove, gameState?.timerStart, gameState?.rivalTimerReduced, gameState?.rivalTimerReducedTarget, gameState?.currentTurn]);
 
   useEffect(() => {
+    resultRedirectedRef.current = false;
+  }, [gameId]);
+
+  useEffect(() => {
     if (gameDoc && gameState) {
       setLoadStuck(false);
       return;
@@ -405,6 +437,7 @@ export default function GameScreen() {
     }
 
     showWildcardAlert(t('game.alertEarthquake'), '#FF8C00');
+    triggerBoardEffect('earthquake');
   }, [gameState?.earthquakeActive, gameState?.currentTurn]);
 
   // ── Timer ─────────────────────────────────────────────────────────────
@@ -539,6 +572,8 @@ export default function GameScreen() {
     if (matchWinner) {
       if (matchWinner === myUid) playSound('win');
       else playSound('lose');
+      if (resultRedirectedRef.current) return;
+      resultRedirectedRef.current = true;
       router.replace({
         pathname: '/game/resultado',
         params: { gameId, winnerId: matchWinner, myUid, endReason: 'normal' },
@@ -602,6 +637,7 @@ export default function GameScreen() {
         teleportedBoard[index] = mySymbol;
         teleportedBoard[teleportFrom] = '';
         await applyTeleportMove(gameId!, gameState.board, teleportFrom, index, mySymbol);
+        triggerBoardEffect('teleport');
         teleportModeRef.current = false;
         setTeleportMode(false);
         setTeleportFrom(null);
@@ -719,6 +755,7 @@ export default function GameScreen() {
           setTeleportMode(true);
           setTeleportFrom(null);
           setWildcardAlert(null);
+          triggerBoardEffect('teleport');
         }
       } catch {
         // Error de red — no hacer nada, el jugador conserva su comodín
@@ -732,6 +769,13 @@ export default function GameScreen() {
         decrementLocal();
         playSound('wildcard');
         updateMissionProgress(myUid, 'wildcards').catch(() => {});
+        if (wildcardId === 'freeze') triggerBoardEffect('freeze');
+        if (wildcardId === 'shield') triggerBoardEffect('shield');
+        if (wildcardId === 'confusion') triggerBoardEffect('confusion');
+        if (wildcardId === 'earthquake') triggerBoardEffect('earthquake');
+        if (wildcardId === 'time_reduce') triggerBoardEffect('time_reduce');
+        if (wildcardId === 'turbo') triggerBoardEffect('turbo');
+        if (wildcardId === 'sabotage') triggerBoardEffect('sabotage');
       } else if (wildcardId === 'sabotage') {
         Alert.alert(t('game.sabotageEmpty'), t('game.sabotageEmptyMsg'));
       }
@@ -748,6 +792,8 @@ export default function GameScreen() {
           if (!gameDoc || !myUid) return;
           const opponentId = gameDoc.player1 === myUid ? gameDoc.player2 : gameDoc.player1;
           await forfeitGame(gameId!, myUid, opponentId);
+          if (resultRedirectedRef.current) return;
+          resultRedirectedRef.current = true;
           router.replace({
             pathname: '/game/resultado',
             params: { gameId, winnerId: opponentId, myUid },
@@ -809,17 +855,12 @@ export default function GameScreen() {
   const opponentDisplayNameColor = resolveNameColor(opponentNameColor ?? null);
 
   const isConfused = gameState.confusionActive && gameState.confusionTarget === myUid;
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const boardSize = useMemo(() => {
-    const byWidth = Math.max(220, Math.min(340, screenWidth - 36));
-    const byHeight = Math.max(210, Math.min(330, Math.floor(screenHeight * 0.38)));
-    return Math.min(byWidth, byHeight);
-  }, [screenWidth, screenHeight]);
+  const isCompact = screenHeight < 760;
 
   return (
     <Animated.View style={[styles.container, shakeStyle]}>
       <ScrollView
-        contentContainerStyle={styles.contentContainer}
+        contentContainerStyle={[styles.contentContainer, isCompact && styles.contentContainerCompact]}
         showsVerticalScrollIndicator={false}
       >
       {/* Ronda y marcador */}
@@ -903,6 +944,7 @@ export default function GameScreen() {
           onCellPress={handleCellPress}
           disabled={!isMyTurn}
           boardSize={boardSize}
+          effectType={boardEffect}
           confusionActive={isConfused}
           mySymbol={mySymbol}
           winningCells={[]}
@@ -975,6 +1017,7 @@ export default function GameScreen() {
 const createStyles = (COLORS: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   contentContainer: { paddingTop: 50, paddingHorizontal: 16, paddingBottom: 20 },
+  contentContainerCompact: { paddingTop: 22, paddingBottom: 96 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background },
   loading: { color: COLORS.textSecondary, fontSize: 16 },
   recoverBtn: {
