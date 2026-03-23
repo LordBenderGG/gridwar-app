@@ -45,10 +45,14 @@
       [
         "./node_modules/react-native-google-mobile-ads/app.plugin.js",
         {
-          "androidAppId": "ca-app-pub-9019813013540172~1893379866"
+          "androidAppId": "ca-app-pub-9019813013540172~1893379866",
+          "iosAppId": "ca-app-pub-9019813013540172~1893379866"
         }
       ]
     ],
+    "react-native-google-mobile-ads": {
+      "android_app_id": "ca-app-pub-9019813013540172~1893379866"
+    },
     "scheme": "gridwar",
     "extra": {
       "router": {

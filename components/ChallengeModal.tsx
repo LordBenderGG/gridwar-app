@@ -332,7 +332,7 @@ const ChallengeModal: React.FC<ChallengeModalProps> = ({
           <View style={styles.modal}>
             {/* Header */}
             <View style={styles.headerRow}>
-              <Text style={styles.incomingLabel}>⚔️ {t('challenges.title').toUpperCase()}</Text>
+              <Text style={styles.incomingLabel}> {t('challenges.title').toUpperCase()}</Text>
               <View style={[styles.countdownBubble, { borderColor: countdownColor }]}>
                 <Text style={[styles.countdownNumber, { color: countdownColor }]}>
                   {secondsLeft}
@@ -373,31 +373,31 @@ const ChallengeModal: React.FC<ChallengeModalProps> = ({
 
             {/* Reglas del match */}
             <View style={styles.rulesBox}>
-              <Text style={styles.rulesTitle}>📋 {t('challenges.rulesTitle')}</Text>
-              <Text style={styles.rulesItem}>🎯 {t('challenges.rulesBestOf3')}</Text>
-              <Text style={styles.rulesItem}>⏱ {t('challenges.rulesTimer')}</Text>
-              <Text style={styles.rulesItem}>💎 {t('challenges.rulesWildcards')}</Text>
+              <Text style={styles.rulesTitle}>{t('challenges.rulesTitle')}</Text>
+              <Text style={styles.rulesItem}>{t('challenges.rulesBestOf3')}</Text>
+               <Text style={styles.rulesItem}>⏱ {t('challenges.rulesTimer')}</Text>
+              <Text style={styles.rulesItem}>{t('challenges.rulesWildcards')}</Text>
             </View>
 
             {/* Advertencia */}
             <View style={[styles.warningBox, critical && styles.warningBoxCritical]}>
-              <Text style={styles.warningIcon}>⚠️</Text>
+              <Text style={styles.warningIcon}>!</Text>
               <View style={styles.warningTextContainer}>
                 <Text style={styles.warningTitle}>{t('challenges.timeToAccept', { seconds: secondsLeft })}</Text>
-                <Text style={styles.warningItem}>• -50 {t('home.points').toLowerCase()}</Text>
-                <Text style={styles.warningItem}>• {t('challenges.rejectPenalty')}</Text>
+                <Text style={styles.warningItem}>-50 {t('home.points').toLowerCase()}</Text>
+                <Text style={styles.warningItem}>{t('challenges.rejectPenalty')}</Text>
               </View>
             </View>
 
             {/* Botones */}
             <View style={styles.buttonsRow}>
               <TouchableOpacity style={styles.rejectBtn} onPress={onReject}>
-                <Text style={styles.rejectIcon}>✕</Text>
+                <Text style={styles.rejectIcon}>X</Text>
                 <Text style={styles.rejectText}>{t('challenges.reject')}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.acceptBtn} onPress={onAccept}>
-                <Text style={styles.acceptIcon}>⚔️</Text>
+                <Text style={styles.acceptIcon}>OK</Text>
                 <Text style={styles.acceptText}>{t('challenges.accept')}</Text>
               </TouchableOpacity>
             </View>

@@ -11,7 +11,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useColors } from '../../hooks/useColors';
 import '../../i18n';
 
-const SHAME_EMOJIS = ['💀', '🤡', '😭', '🗑️', '👎', '☠️'];
+const SHAME_EMOJIS = ['💀', '☠️', '😵', '😬', '🥶', '🪦'];
 
 const createStyles = (COLORS: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background, paddingTop: 50, paddingHorizontal: 16 },
@@ -222,7 +222,7 @@ export default function SalonScreen() {
   const ListHeader = () => (
     <View style={styles.header}>
       {/* Título dramático */}
-      <Text style={styles.skull}>💀</Text>
+      <Text style={styles.skull}>☠️</Text>
       <Text style={styles.title1}>{t('shame.title1')}</Text>
       <Text style={styles.title2}>{t('shame.title2')}</Text>
       <View style={styles.titleUnderline} />
@@ -244,7 +244,7 @@ export default function SalonScreen() {
         ListHeaderComponent={ListHeader}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyEmoji}>🎉</Text>
+            <Text style={styles.emptyEmoji}>🪦</Text>
             <Text style={styles.emptyTitle}>{t('shame.empty')}</Text>
             <Text style={styles.emptyText}>{t('shame.emptyMsg')}</Text>
           </View>

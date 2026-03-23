@@ -62,7 +62,7 @@ const INITIAL_STATE = (): TrainingState => ({
   teleportPending: false,
 });
 
-// ── Rank → difficulty mapping ──────────────────────────────────────────────
+// ── Rank  difficulty mapping ──────────────────────────────────────────────
 const RANKS = ['Novato', 'Bronce', 'Plata', 'Oro', 'Diamante', 'Maestro', 'Leyenda'];
 
 function rankToDifficulty(rank: string): Difficulty {
@@ -549,7 +549,7 @@ export default function TrainingScreen() {
   // Wildcard alert banner
   const [wildcardAlert, setWildcardAlert] = useState<{ message: string; color: string } | null>(null);
   const [boardEffect, setBoardEffect] = useState<BoardEffectType | null>(null);
-  const TRAINING_EMOJIS = ['😎', '🔥', '😂', '💀', '👏', '🫡'];
+  const TRAINING_EMOJIS = ['😀', '💪', '🔥', '😈', '⚡', '👏'];
   const [myEmoji, setMyEmoji] = useState<string | null>(null);
   const [aiEmoji, setAiEmoji] = useState<string | null>(null);
 
@@ -630,7 +630,7 @@ export default function TrainingScreen() {
   const handleTimeUp = useCallback(() => {
     const state = gsRef.current;
     if (!state.isPlayerTurn) return; // AI doesn't time-out in training
-    // Player ran out of time → switch to AI turn
+    // Player ran out of time  switch to AI turn
     setGs(prev => {
       const next = { ...prev, isPlayerTurn: false, wildcardUsed: false };
       gsRef.current = next;
@@ -1095,9 +1095,9 @@ export default function TrainingScreen() {
         <Text style={styles.menuSubtitle}>{t('training.subtitle')}</Text>
 
         <View style={styles.infoBox}>
-          <Text style={styles.infoItem}>⚔️  {t('training.gemsUnlimited')}</Text>
-          <Text style={styles.infoItem}>🚫  {t('training.noPrize')}</Text>
-          <Text style={styles.infoItem}>🤖  {t('training.rankAdapted')}</Text>
+          <Text style={styles.infoItem}>  {t('training.gemsUnlimited')}</Text>
+          <Text style={styles.infoItem}>  {t('training.noPrize')}</Text>
+          <Text style={styles.infoItem}>  {t('training.rankAdapted')}</Text>
         </View>
 
         <AdBanner placement="training" style={{ marginBottom: 8 }} />
@@ -1112,7 +1112,7 @@ export default function TrainingScreen() {
           >
             <Text style={[styles.diffBtnText, d === autoD && styles.diffBtnTextRecommended]}>
               {diffLabel(d)}
-              {d === autoD ? '  ★' : ''}
+              {d === autoD ? '  ' : ''}
             </Text>
           </TouchableOpacity>
         ))}

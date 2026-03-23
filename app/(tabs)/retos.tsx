@@ -125,15 +125,15 @@ export default function RetosScreen() {
             {rankInfo.icon} {item.fromRank} · {item.fromPoints} pts
           </Text>
           <Text style={[styles.time, secondsLeft <= 5 && styles.timeCritical]}>
-            ⏱ {t('challenges.timeToAccept', { seconds: secondsLeft })}
+            T {t('challenges.timeToAccept', { seconds: secondsLeft })}
           </Text>
         </View>
         <View style={styles.buttons}>
           <TouchableOpacity style={styles.acceptBtn} onPress={() => handleAccept(item)}>
-            <Text style={styles.acceptText}>✅ {t('challenges.accept')}</Text>
+            <Text style={styles.acceptText}>{t('challenges.accept')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.rejectBtn} onPress={() => handleReject(item)}>
-            <Text style={styles.rejectText}>✗</Text>
+            <Text style={styles.rejectText}>{t('challenges.reject')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -142,14 +142,14 @@ export default function RetosScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>⚔️ {t('challenges.title').toUpperCase()}</Text>
+      <Text style={styles.title}>{t('challenges.title').toUpperCase()}</Text>
       <FlatList
         data={challenges}
         keyExtractor={(item) => item.challengeId}
         renderItem={renderItem}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyText}>😴 {t('challenges.noChallenge')}</Text>
+            <Text style={styles.emptyText}>{t('challenges.noChallenge')}</Text>
           </View>
         }
       />

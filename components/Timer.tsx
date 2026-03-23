@@ -91,7 +91,7 @@ const Timer: React.FC<TimerProps> = ({ secondsLeft, isMyTurn, turboActive, maxTi
         <Animated.View style={[styles.bar, barStyle]} />
       </View>
       <Text style={[styles.time, isUrgent && styles.timeUrgent]}>
-        {turboActive ? `⚡ ${secondsLeft}s` : `${secondsLeft}s`}
+        {turboActive ? ` ${secondsLeft}s` : `${secondsLeft}s`}
       </Text>
     </Animated.View>
   );

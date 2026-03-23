@@ -4,7 +4,7 @@
  * Documento: /seasons/current
  *   { seasonId, startDate (ISO), endDate (ISO), status: 'active' | 'ended' }
  *
- * Al abrir la app, si Date.now() > endDate → el primer usuario que lo detecta
+ * Al abrir la app, si Date.now() > endDate  el primer usuario que lo detecta
  * dispara el reset (usando una transacción para evitar doble disparo).
  *
  * Reset:
@@ -84,7 +84,7 @@ export const checkAndResetSeason = async (): Promise<boolean> => {
     const didReset = await runTransaction(db, async (tx) => {
       const snap = await tx.get(seasonRef);
       if (!snap.exists()) {
-        // No hay temporada → crear la primera
+        // No hay temporada  crear la primera
         const today = todayISO();
         const newDoc: SeasonDoc = {
           seasonId: newSeasonId(),

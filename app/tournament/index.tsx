@@ -59,7 +59,7 @@ export default function TournamentListScreen() {
       >
         <View style={styles.cardHeader}>
           <View style={styles.cardTitleRow}>
-            {isGlobal && <Text style={styles.globalBadge}>🌍 GLOBAL</Text>}
+            {isGlobal && <Text style={styles.globalBadge}> GLOBAL</Text>}
             <Text style={styles.tournamentName} numberOfLines={1}>{item.name}</Text>
           </View>
           <View style={[styles.statusBadge, { borderColor: statusColor }]}>
@@ -68,7 +68,7 @@ export default function TournamentListScreen() {
         </View>
 
         <View style={styles.cardInfo}>
-          <Text style={styles.info}>👥 {item.players.length}/{item.maxPlayers}</Text>
+          <Text style={styles.info}> {item.players.length}/{item.maxPlayers}</Text>
           {item.entryFee > 0 && (
             <Text style={styles.entryFee}>{t('tournament.entryFee', { fee: item.entryFee })}</Text>
           )}
@@ -78,9 +78,9 @@ export default function TournamentListScreen() {
         </View>
 
         <View style={styles.prizesRow}>
-          <Text style={styles.prizeText}>🥇 {item.prizes.first}💎</Text>
-          <Text style={styles.prizeText}>🥈 {item.prizes.second}💎</Text>
-          <Text style={styles.prizeText}>🥉 {item.prizes.third}💎</Text>
+          <Text style={styles.prizeText}>
+            💎{item.prizes.first}   💎{item.prizes.second}   💎{item.prizes.third}
+          </Text>
         </View>
 
         {isJoined && <Text style={styles.joined}>{t('tournament.enrolled')}</Text>}

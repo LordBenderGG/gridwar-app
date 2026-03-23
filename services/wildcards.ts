@@ -166,7 +166,7 @@ export const WILDCARDS: Wildcard[] = [
     description: 'El rival solo tendrá 15 segundos para hacer su próxima jugada',
     descriptionEn: 'Opponent only gets 15 seconds for their next move',
     cost: 12,
-    icon: '⏱️',
+    icon: '⏱',
     color: '#FF6B35',
   },
   {
@@ -196,7 +196,7 @@ export const WILDCARDS: Wildcard[] = [
     description: 'Las fichas X y O del rival aparecen al revés en su tablero por 1 jugada',
     descriptionEn: "Opponent's X and O pieces appear swapped on their board for 1 move",
     cost: 15,
-    icon: '😵',
+    icon: '🔀',
     color: '#FF69B4',
   },
   {
@@ -226,7 +226,7 @@ export const WILDCARDS: Wildcard[] = [
     description: 'Todas las fichas del rival se reubican al azar en el tablero',
     descriptionEn: "All of the opponent's pieces are randomly repositioned on the board",
     cost: 20,
-    icon: '💥',
+    icon: '🌪️',
     color: '#FF8C00',
   },
 ];
@@ -282,14 +282,14 @@ export const applyWildcard = async (
   const opponentSymbol: CellValue = mySymbol === 'X' ? 'O' : 'X';
 
   switch (wildcardId) {
-    // ── ⏱️ TIEMPO REDUCIDO ──────────────────────────────────────────────
+    // ── ⏱ TIEMPO REDUCIDO ──────────────────────────────────────────────
     // Activa el flag; makeMove lo limpiará cuando el turno reducido termine.
     case 'time_reduce':
       updates['rivalTimerReduced'] = true;
       updates['rivalTimerReducedTarget'] = opponentUid;
       break;
 
-    // ── 💣 SABOTAJE ──────────────────────────────────────────────────────
+    // ──  SABOTAJE ──────────────────────────────────────────────────────
     // Busca la ÚLTIMA ficha del rival y la mueve a una celda libre aleatoria.
     // Si el rival no tiene fichas aún, retorna false (no cobrar gems).
     case 'sabotage': {
@@ -321,7 +321,7 @@ export const applyWildcard = async (
       break;
     }
 
-    // ── ❄️ CONGELACIÓN ───────────────────────────────────────────────────
+    // ──  CONGELACIÓN ───────────────────────────────────────────────────
     // Marca al rival como congelado. handleCellPress detecta esto cuando el
     // rival intenta mover y llama skipTurn en lugar de makeMove.
     // IMPORTANTE: NO sobreescribir wildcardUsed=true aquí de forma que bloquee
@@ -330,7 +330,7 @@ export const applyWildcard = async (
       updates['frozenPlayer'] = opponentUid;
       break;
 
-    // ── 💥 TERREMOTO ─────────────────────────────────────────────────────
+    // ──  TERREMOTO ─────────────────────────────────────────────────────
     // Al inicio del turno del rival, sus fichas se reubican aleatoriamente.
     // La animación de sacudida la ejecuta gameId.tsx al detectar earthquakeActive.
     case 'earthquake':
@@ -338,16 +338,16 @@ export const applyWildcard = async (
       updates['earthquakeTarget'] = opponentUid;
       break;
 
-    // ── ⚡ TURBO ─────────────────────────────────────────────────────────
+    // ──  TURBO ─────────────────────────────────────────────────────────
     // Reinicia el timerStart para que el jugador tenga 30s desde ahora.
-    // También activa el flag visual para mostrar ⚡ en el Timer.
+    // También activa el flag visual para mostrar  en el Timer.
     case 'turbo':
       updates['turboActive'] = true;
       updates['turboPlayer'] = playerUid;
       updates['timerStart'] = Date.now(); // reiniciar el timer
       break;
 
-    // ── 🛡️ ESCUDO ────────────────────────────────────────────────────────
+    // ──  ESCUDO ────────────────────────────────────────────────────────
     // Activa el flag; WildcardBar en el cliente del rival lo detecta y
     // bloquea el uso de comodines mientras esté activo.
     case 'shield':
@@ -355,7 +355,7 @@ export const applyWildcard = async (
       updates['shieldPlayer'] = playerUid;
       break;
 
-    // ── 🌀 TELETRANSPORTE ────────────────────────────────────────────────
+    // ──  TELETRANSPORTE ────────────────────────────────────────────────
     // Activa modo selección en el cliente. El jugador NO pierde su turno:
     // primero elige origen+destino (teleport), luego sigue con su movimiento normal.
     // El Board en gameId.tsx maneja el modo teleport localmente y luego
@@ -367,7 +367,7 @@ export const applyWildcard = async (
       // (ya se marcó arriba; el Board ignora wildcardUsed durante el teleport)
       break;
 
-    // ── 😵 CONFUSIÓN ─────────────────────────────────────────────────────
+    // ──  CONFUSIÓN ─────────────────────────────────────────────────────
     // Invierte X y O visualmente en el tablero del rival por 1 turno.
     // Board.tsx ya maneja esto con confusionActive + confusionTarget.
     case 'confusion':

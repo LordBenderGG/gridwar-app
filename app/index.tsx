@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, ImageBackground, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '../store/authStore';
@@ -31,8 +31,16 @@ export default function IndexScreen() {
   }, [user, loading]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center' }}>
-      <ActivityIndicator size="large" color={COLORS.primary} />
-    </View>
+    <ImageBackground source={require('../assets/splash.png')} style={styles.container}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <Image source={require('../logo.png')} style={{ width: 200, height: 200 }} />
+      </View>
+    </ImageBackground>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+});

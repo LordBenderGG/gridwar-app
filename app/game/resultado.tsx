@@ -192,7 +192,7 @@ export default function ResultadoScreen() {
       ]}
     >
       <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-        <Text style={styles.emoji}>{isWinner ? '🏆' : '💀'}</Text>
+         <Text style={styles.emoji}>{isWinner ? '🏆' : '💀'}</Text>
           <Text style={[styles.title, isWinner ? styles.winTitle : styles.lossTitle]}>
             {isIdlePenalty ? t('result.noCombatTitle') : message}
           </Text>
@@ -200,8 +200,8 @@ export default function ResultadoScreen() {
         <View style={styles.pointsBox}>
           <Text style={[styles.points, isWinner ? styles.winPoints : styles.lossPoints]}>
             {displayedGemsDelta !== null
-              ? (displayedGemsDelta > 0 ? `💎 +${displayedGemsDelta}` : displayedGemsDelta < 0 ? `💎 ${displayedGemsDelta}` : '💎 0')
-              : '💎 ...'}
+              ? (displayedGemsDelta > 0 ? ` +${displayedGemsDelta}` : displayedGemsDelta < 0 ? ` ${displayedGemsDelta}` : ' 0')
+              : ' ...'}
           </Text>
           <Text style={styles.blockedText}>
             {isLocalTournamentMatch

@@ -264,7 +264,7 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
           <Text style={[styles.username, { color: nameColor }]}>{player.username}</Text>
           {(player as any).tournamentsWon > 0 && (
             <View style={styles.tournamentBadge}>
-              <Text style={styles.tournamentBadgeText}>🏆×{(player as any).tournamentsWon}</Text>
+              <Text style={styles.tournamentBadgeText}>×{(player as any).tournamentsWon}</Text>
             </View>
           )}
           {(player as any).level > 1 && (
@@ -274,7 +274,7 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
           )}
           {player.wins >= 10 && (
             <View style={styles.hotBadge}>
-              <Text style={styles.hotBadgeText}>🔥 HOT</Text>
+              <Text style={styles.hotBadgeText}> HOT</Text>
             </View>
           )}
         </View>
@@ -291,7 +291,7 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
           <Text style={[styles.statusLabel, { color: statusConfig.color }]}>
             {statusConfig.label}
           </Text>
-          <Text style={styles.gems}>· {player.gems} 💎</Text>
+          <Text style={styles.gems}>· {player.gems} </Text>
         </View>
       </View>
 
@@ -310,7 +310,7 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
             styles.challengeIcon,
             challengeDisabled && styles.challengeIconDisabled,
           ]}>
-            {challengeDisabled ? '🔒' : '⚔️'}
+            {challengeDisabled ? '' : ''}
           </Text>
           <Text style={[
             styles.challengeBtnText,

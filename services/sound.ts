@@ -12,7 +12,7 @@
 
 import { Audio } from 'expo-av';
 
-// ─── Mapa de nombre → require ─────────────────────────────────────────────────
+// ─── Mapa de nombre  require ─────────────────────────────────────────────────
 
 const SOUND_FILES = {
   tap:        require('../assets/sounds/tap.wav'),

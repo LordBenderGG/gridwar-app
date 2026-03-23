@@ -2,16 +2,16 @@
  * services/tournament.ts — Fase 4 (rediseño completo)
  *
  * Tipos de torneo:
- *   - 'global': el creador necesita tournament_pass (80💎). Cuota de entrada: 50💎/jugador.
- *               Solo 1 torneo global activo a la vez → /meta/tournaments.activeGlobalTournamentId
+ *   - 'global': el creador necesita tournament_pass (80). Cuota de entrada: 50/jugador.
+ *               Solo 1 torneo global activo a la vez  /meta/tournaments.activeGlobalTournamentId
  *   - 'local':  gratis crear, sin cuota. Premios fijos.
  *
  * Distribución del pool (global):
- *   Pool real = entryFee × (maxPlayers - 1)  ← creador no paga cuota.
+ *   Pool real = entryFee × (maxPlayers - 1)   creador no paga cuota.
  *   Creador 20% | Economía global 2% | 1ro 49% | 2do 19.6% | 3ro 9.4%
  *
  * Premios locales fijos:
- *   1ro: 120💎 | 2do: 50💎 | 3ro: 30💎 | Creador: 20💎
+ *   1ro: 120 | 2do: 50 | 3ro: 30 | Creador: 20
  *
  * Bracket: eliminación directa tipo FIFA + partido por 3er puesto (semifinalistas perdedores).
  */
@@ -80,7 +80,7 @@ export interface Tournament {
   // Pool y premios
   entryFee: number;           // 50 para global, 0 para local
   registrationPool: number;   // suma de cuotas pagadas
-  creatorCut: number;         // 20% del pool (global) o 20💎 fijo (local)
+  creatorCut: number;         // 20% del pool (global) o 20 fijo (local)
   economyCut: number;         // 2% del pool (global) o 0 (local)
   prizes: {
     first: number;
@@ -690,8 +690,8 @@ export const syncTournamentProgress = async (tournamentId: string): Promise<void
 
 /**
  * Avanzar el bracket tras completar todos los partidos de una ronda.
- * Si los ganadores son 2 → crean la final + partido por 3er puesto.
- * Si los ganadores son 1 → el torneo terminó (la final ya fue).
+ * Si los ganadores son 2  crean la final + partido por 3er puesto.
+ * Si los ganadores son 1  el torneo terminó (la final ya fue).
  */
 export const advanceTournament = async (
   tournamentId: string,
@@ -733,7 +733,7 @@ export const advanceTournament = async (
     return;
   }
 
-  // ── Caso: 2 ganadores = semifinales terminadas → crear final + 3er puesto ─
+  // ── Caso: 2 ganadores = semifinales terminadas  crear final + 3er puesto ─
   if (winners.length === 2) {
     const [sf1Loser, sf2Loser] = losers;
     const nextRound = currentRound + 1;
@@ -789,7 +789,7 @@ export const advanceTournament = async (
     return;
   }
 
-  // ── Caso general: más de 2 ganadores → siguiente ronda normal ─────────────
+  // ── Caso general: más de 2 ganadores  siguiente ronda normal ─────────────
   const nextRound = currentRound + 1;
   const nextMatches: TournamentMatch[] = [];
 

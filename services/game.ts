@@ -512,7 +512,7 @@ export const finishMatch = async (
   const gameData = gameSnap.data() as GameDoc;
   const loserScore = gameData?.score?.[loserId] ?? 0;
 
-  // Determinar si es un torneo local → no sumar/restar puntos al ranking global
+  // Determinar si es un torneo local  no sumar/restar puntos al ranking global
   let skipPoints = false;
   if (gameData?.type === 'tournament' && gameData?.tournamentId) {
     try {

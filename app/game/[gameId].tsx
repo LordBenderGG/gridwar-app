@@ -87,7 +87,7 @@ export default function GameScreen() {
   const boardEffectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Chat emojis (Fase 1B) ─────────────────────────────────────────────
-  const CHAT_EMOJIS = ['😂', '💀', '🤡', '😎', '🔥', '👏', '😴', '🫵'];
+  const CHAT_EMOJIS = ['😀', '😂', '😎', '🔥', '💀', '😤', '👏', 'GG'];
   // Emoji flotante sobre avatar del emisor
   const [floatingEmoji, setFloatingEmoji] = useState<{ emoji: string; isMine: boolean } | null>(null);
   const emojiFloatAnim = useRef(new RNAnimated.Value(0)).current;
@@ -202,7 +202,7 @@ export default function GameScreen() {
 
       // Detectar cambios de flags para mostrar feedback al jugador afectado
       if (prev) {
-        // Rival activó time_reduce → aplica a mi próximo turno
+        // Rival activó time_reduce  aplica a mi próximo turno
         if (
           !prev.rivalTimerReduced
           && state.rivalTimerReduced
@@ -211,17 +211,17 @@ export default function GameScreen() {
           showWildcardAlert(t('game.alertTimerReduced'), '#FF6B35');
           triggerBoardEffect('time_reduce');
         }
-        // Rival activó confusion → yo soy el objetivo
+        // Rival activó confusion  yo soy el objetivo
         if (!prev.confusionActive && state.confusionActive && state.confusionTarget === myUid) {
           showWildcardAlert(t('game.alertConfusion'), '#FF69B4');
           triggerBoardEffect('confusion');
         }
-        // Rival activó shield → yo tengo escudo activo en su contra
+        // Rival activó shield  yo tengo escudo activo en su contra
         if (!prev.shieldActive && state.shieldActive && state.shieldPlayer !== myUid) {
           showWildcardAlert(t('game.alertShieldRival'), '#34C759');
           triggerBoardEffect('shield');
         }
-        // Turbo activado por mí → confirmar visualmente
+        // Turbo activado por mí  confirmar visualmente
         if (!prev.turboActive && state.turboActive && state.turboPlayer === myUid) {
           showWildcardAlert(t('game.alertTurbo'), '#FFD700');
           triggerBoardEffect('turbo');

@@ -212,7 +212,7 @@ export default function GuiaScreen() {
                 <Text style={styles.wcName}>{t(`wildcards.${keyPrefix}Name`)}</Text>
                 <View style={[styles.costBadge, { backgroundColor: wc.color + '22' }]}>
                   <Text style={[styles.costText, { color: wc.color }]}>
-                    💎 {wc.cost}
+                     {wc.cost}
                   </Text>
                 </View>
               </View>

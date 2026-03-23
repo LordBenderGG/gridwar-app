@@ -39,7 +39,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     id: 'first_win',
     label: 'Primera Victoria',
     description: 'Gana tu primera partida',
-    icon: '🏅',
+    icon: '🎯',
     condition: (s) => s.wins >= 1,
   },
   {
@@ -60,7 +60,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     id: 'tournament_creator',
     label: 'Organizador',
     description: 'Crea 3 torneos',
-    icon: '📋',
+    icon: '📣',
     condition: (s) => s.tournamentCreated >= 3,
   },
   {
@@ -109,14 +109,14 @@ export const ACHIEVEMENTS: Achievement[] = [
     id: 'first_tournament',
     label: 'Debutante',
     description: 'Participa en tu primer torneo',
-    icon: '🎟️',
+    icon: '🎮',
     condition: (s) => s.tournamentCreated >= 1 || s.tournamentsWon >= 1,
   },
   {
     id: 'veteran',
     label: 'Veterano',
     description: 'Juega 50 partidas',
-    icon: '⚔️',
+    icon: '🧠',
     condition: (s) => s.gamesPlayed >= 50,
   },
   {
@@ -130,7 +130,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     id: 'win_10',
     label: 'Guerrero',
     description: 'Gana 10 partidas',
-    icon: '🗡️',
+    icon: '⚔️',
     condition: (s) => s.wins >= 10,
   },
   {

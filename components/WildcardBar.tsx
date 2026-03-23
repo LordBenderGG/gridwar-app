@@ -114,7 +114,7 @@ const WildcardBar: React.FC<WildcardBarProps> = ({
         <Text style={styles.title}>{t('wildcards.title').toUpperCase()}</Text>
       </View>
       {shieldActive && (
-        <Text style={styles.shieldWarning}>🛡️ {t('wildcards.shieldRival')}</Text>
+        <Text style={styles.shieldWarning}> {t('wildcards.shieldRival')}</Text>
       )}
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         {WILDCARDS.map((w) => {

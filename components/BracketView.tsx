@@ -46,7 +46,7 @@ const PlayerSlot: React.FC<{
       >
         {isTBD ? t('bracket.tbd') : username}
       </Text>
-      {isWinner && <Text style={[styles.winnerBadge, { color: COLORS.success }]}>✓</Text>}
+      {isWinner && <Text style={[styles.winnerBadge, { color: COLORS.success }]}>W</Text>}
     </View>
   );
 };

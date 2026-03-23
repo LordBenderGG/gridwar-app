@@ -118,7 +118,7 @@ export const sendChallenge = async (
   // Enviar push al retado (funciona en background)
   sendPushToUser(
     toUid,
-    '⚔️ ¡Te han retado!',
+    ' ¡Te han retado!',
     `${fromUsername} te desafía a una batalla en GRIDWAR. ¡Tienes 30 segundos!`,
     { type: 'challenge', challengeId },
     'challenges'

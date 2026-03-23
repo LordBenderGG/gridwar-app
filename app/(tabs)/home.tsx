@@ -4,6 +4,7 @@ import {
   RefreshControl, TextInput, Alert, ActivityIndicator,
   Animated as RNAnimated, Dimensions,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import {
@@ -31,7 +32,7 @@ import RewardedAdButton from '../../components/RewardedAdButton';
 import { scheduleLocalChallengeNotification } from '../../services/notifications';
 import { getDailyMissions, DailyMission } from '../../services/missions';
 import { checkAndResetSeason, getCurrentSeason, daysUntilSeasonEnd } from '../../services/seasons';
-import { getTranslatedRankName } from '../../services/ranking';
+import { getTranslatedRankName, getRankInfo } from '../../services/ranking';
 import { flushPendingWildcardDebits } from '../../services/wildcards';
 import '../../i18n';
 
@@ -382,7 +383,7 @@ export default function HomeScreen() {
           <Text style={{ color: '#FF3B30' }}>WAR</Text>
         </RNAnimated.Text>
         <View style={styles.waitingCard}>
-          <Text style={styles.waitingEmoji}>⚔️</Text>
+           <Text style={styles.waitingEmoji}>⏳</Text>
           <ActivityIndicator size="large" color={COLORS.primary} style={{ marginBottom: 16 }} />
           <Text style={styles.waitingTitle}>{t('home.challengeSent')}</Text>
           <Text style={styles.waitingSubtitle}>
@@ -432,24 +433,30 @@ export default function HomeScreen() {
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={[styles.statValue, { color: COLORS.warning, fontSize: 12 }]}>{user?.rank ? getTranslatedRankName(user.rank) : ''}</Text>
-          <Text style={styles.statLabel}>{t('home.rank')}</Text>
-        </View>
+           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+             {user?.rank && <Text style={{ fontSize: 14, marginRight: 4 }}>{getRankInfo(user.rank).icon}</Text>}
+             <Text style={[styles.statValue, { color: COLORS.warning, fontSize: 12 }]}>{user?.rank ? getTranslatedRankName(user.rank) : ''}</Text>
+           </View>
+           <Text style={styles.statLabel}>{t('home.rank')}</Text>
+         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={[styles.statValue, { color: COLORS.primary }]}>{filtered.length}</Text>
+          <Text style={{ color: COLORS.primary }}>{filtered.length}</Text>
           <Text style={styles.statLabel}>{t('home.online')}</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={[styles.statValue, { color: '#FFD700' }]}>💎 {user?.gems || 0}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ color: '#FFD700', fontSize: 14, marginRight: 4 }}>💎</Text>
+            <Text style={[styles.statValue, { color: '#FFD700' }]}>{user?.gems || 0}</Text>
+          </View>
           <Text style={styles.statLabel}>{t('home.gems')}</Text>
         </View>
       </View>
 
       {/* Buscador */}
       <View style={styles.searchContainer}>
-        <Text style={styles.searchIcon}>🔍</Text>
+        <Ionicons name="search" size={18} color={COLORS.textSecondary} style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
           placeholder={t('home.searchPlaceholder')}
@@ -465,18 +472,24 @@ export default function HomeScreen() {
           style={[styles.modeBtn, myMode === 'global' && styles.modeBtnActive]}
           onPress={() => handleSetMode('global')}
         >
-          <Text style={[styles.modeBtnText, myMode === 'global' && styles.modeBtnTextActive]}>
-            {t('home.globalMode')}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+            <Text style={{ fontSize: 16, marginRight: 4 }}>🌍</Text>
+            <Text style={[styles.modeBtnText, myMode === 'global' && styles.modeBtnTextActive]}>
+              {t('home.globalMode')}
+            </Text>
+          </View>
           <Text style={styles.modeBtnDesc}>{t('home.globalModeDesc')}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.modeBtn, myMode === 'local' && styles.modeBtnActive]}
           onPress={() => handleSetMode('local')}
         >
-          <Text style={[styles.modeBtnText, myMode === 'local' && styles.modeBtnTextActive]}>
-            {t('home.localMode')}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+            <Text style={{ fontSize: 16, marginRight: 4 }}>📍</Text>
+            <Text style={[styles.modeBtnText, myMode === 'local' && styles.modeBtnTextActive]}>
+              {t('home.localMode')}
+            </Text>
+          </View>
           <Text style={styles.modeBtnDesc}>{t('home.localModeDesc')}</Text>
         </TouchableOpacity>
       </View>
@@ -520,7 +533,7 @@ export default function HomeScreen() {
                   </View>
                 </View>
                 <Text style={[styles.missionReward, m.completed && styles.missionRewardDone]}>
-                  +{m.reward}💎
+                  +{m.reward}
                 </Text>
               </View>
             );
@@ -533,7 +546,7 @@ export default function HomeScreen() {
 
       {/* Video recompensado */}
       <RewardedAdButton
-        label="▶ Ver video y ganar 10 💎 GRATIS"
+        label="Ver video y ganar 10 gratis"
         gemAmount={10}
       />
 
@@ -559,13 +572,13 @@ export default function HomeScreen() {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
         }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyEmoji}>🎮</Text>
-            <Text style={styles.emptyTitle}>{t('home.noPlayers')}</Text>
-            <Text style={styles.emptyText}>{t('home.noPlayersMsg')}</Text>
-          </View>
-        }
+         ListEmptyComponent={
+           <View style={styles.emptyContainer}>
+             <Text style={styles.emptyEmoji}>❓</Text>
+             <Text style={styles.emptyTitle}>{t('home.noPlayers')}</Text>
+             <Text style={styles.emptyText}>{t('home.noPlayersMsg')}</Text>
+           </View>
+         }
         contentContainerStyle={{ paddingBottom: 24 }}
         showsVerticalScrollIndicator={false}
       />
@@ -588,7 +601,7 @@ export default function HomeScreen() {
           ]}
           pointerEvents="none"
         >
-          <Text style={styles.gemFloatText}>+10 💎</Text>
+          <Text style={styles.gemFloatText}>+10 </Text>
         </RNAnimated.View>
       )}
     </View>

@@ -137,7 +137,7 @@ export default function RewardedAdButton({
         <ActivityIndicator size="small" color="#fff" />
       ) : (
         <Text style={styles.text}>
-          {label ?? `▶ Ver video y ganar ${gemAmount} 💎`}
+          {label ?? `▶ Ver video y ganar ${gemAmount} `}
         </Text>
       )}
     </TouchableOpacity>

@@ -215,21 +215,21 @@ const Board: React.FC<BoardProps> = ({
   const effectConfig = useMemo(() => {
     switch (effectType) {
       case 'freeze':
-        return { color: '#5AC8FA', label: '❄ FREEZE' };
+        return { color: '#5AC8FA', label: ' FREEZE' };
       case 'shield':
-        return { color: '#34C759', label: '🛡 SHIELD' };
+        return { color: '#34C759', label: ' SHIELD' };
       case 'confusion':
-        return { color: '#FF69B4', label: '🌀 CONFUSION' };
+        return { color: '#FF69B4', label: ' CONFUSION' };
       case 'earthquake':
-        return { color: '#FF8C00', label: '🌋 EARTHQUAKE' };
+        return { color: '#FF8C00', label: ' EARTHQUAKE' };
       case 'teleport':
-        return { color: '#00F5FF', label: '🌀 TELEPORT' };
+        return { color: '#00F5FF', label: ' TELEPORT' };
       case 'turbo':
-        return { color: '#FFD700', label: '⚡ TURBO' };
+        return { color: '#FFD700', label: ' TURBO' };
       case 'time_reduce':
         return { color: '#FF6B35', label: '⏱ TIME REDUCE' };
       case 'sabotage':
-        return { color: '#FF3B30', label: '💣 SABOTAGE' };
+        return { color: '#FF3B30', label: ' SABOTAGE' };
       default:
         return null;
     }

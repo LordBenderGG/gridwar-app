@@ -1,0 +1,22 @@
+node_modules/
+.expo/
+dist/
+
+# Android build artifacts
+android/.gradle/
+android/build/
+android/app/build/
+
+# Expo / Metro
+.expo-shared/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -179,7 +179,7 @@ const BracketMatchCard: React.FC<BracketMatchProps> = ({ match, currentUserId, o
         >
           {match.p1Username}
         </Text>
-        {match.winner === match.p1 && <Text style={styles.matchWinIcon}>✓</Text>}
+        {match.winner === match.p1 && <Text style={styles.matchWinIcon}>🏆</Text>}
       </View>
       <View style={styles.matchDivider} />
       <View style={styles.matchRow}>
@@ -193,7 +193,7 @@ const BracketMatchCard: React.FC<BracketMatchProps> = ({ match, currentUserId, o
         >
           {match.p2Username}
         </Text>
-        {match.winner === match.p2 && <Text style={styles.matchWinIcon}>✓</Text>}
+        {match.winner === match.p2 && <Text style={styles.matchWinIcon}>🏆</Text>}
       </View>
       {!isDone && isMyMatch && <Text style={styles.matchCTA}>{t('tournament.goToMatch')}</Text>}
     </TouchableOpacity>
@@ -270,7 +270,7 @@ const BracketView: React.FC<BracketViewProps> = ({
           <View key={roundKey} style={styles.roundBlock}>
             <Text style={styles.roundLabel}>
               {roundLabels[roundNum] ?? t('tournament.roundN', { n: roundNum })}
-              {isLastRound ? ' 🏆' : ''}
+              {isLastRound ? ' ' : ''}
             </Text>
             {matches.map((match) => (
               <BracketMatchCard
@@ -551,7 +551,7 @@ export default function TorneoScreen() {
       <View style={styles.badgesRow}>
         <View style={[styles.typeBadge, isGlobal ? styles.typeBadgeGlobal : styles.typeBadgeLocal]}>
           <Text style={styles.typeBadgeText}>
-            {isGlobal ? `🌍 ${t('tournament.typeGlobal').toUpperCase()}` : `📍 ${t('tournament.typeLocal').toUpperCase()}`}
+            {isGlobal ? ` ${t('tournament.typeGlobal').toUpperCase()}` : ` ${t('tournament.typeLocal').toUpperCase()}`}
           </Text>
         </View>
       </View>
@@ -583,14 +583,17 @@ export default function TorneoScreen() {
         </View>
         {tournament.entryFee > 0 && (
           <View style={styles.statItem}>
-            <Text style={[styles.statValue, { color: COLORS.warning }]}>{tournament.entryFee}💎</Text>
+            <Text style={[styles.statValue, { color: COLORS.warning }]}>{tournament.entryFee}</Text>
             <Text style={styles.statLabel}>{t('tournament.entryLabel')}</Text>
           </View>
         )}
         <View style={styles.statItem}>
-          <Text style={[styles.statValue, { color: COLORS.warning }]}>{tournament.prizes.first}💎</Text>
-          <Text style={styles.statLabel}>{t('tournament.firstPrize')}</Text>
-        </View>
+           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+             <Text style={{ color: '#FFD700', fontSize: 22, marginRight: 4 }}>💎</Text>
+             <Text style={[styles.statValue, { color: COLORS.warning }]}>{tournament.prizes.first}</Text>
+           </View>
+           <Text style={styles.statLabel}>{t('tournament.firstPrize')}</Text>
+         </View>
         <View style={styles.statItem}>
           <Text style={styles.statValue}>{tournament.currentRound}/{tournament.totalRounds}</Text>
           <Text style={styles.statLabel}>{t('tournament.roundLabel')}</Text>
@@ -601,10 +604,10 @@ export default function TorneoScreen() {
       {isFinished && tournament.podium && (
         <View style={styles.podiumBanner}>
           <Text style={styles.podiumTitle}>{t('tournament.podiumTitle')}</Text>
-          <Text style={styles.podiumEntry}>🥇 {tournament.playerUsernames[tournament.podium.first] ?? tournament.podium.first}</Text>
-          <Text style={styles.podiumEntry}>🥈 {tournament.playerUsernames[tournament.podium.second] ?? tournament.podium.second}</Text>
+          <Text style={styles.podiumEntry}> {tournament.playerUsernames[tournament.podium.first] ?? tournament.podium.first}</Text>
+          <Text style={styles.podiumEntry}> {tournament.playerUsernames[tournament.podium.second] ?? tournament.podium.second}</Text>
           {tournament.podium.third && (
-            <Text style={styles.podiumEntry}>🥉 {tournament.playerUsernames[tournament.podium.third] ?? tournament.podium.third}</Text>
+            <Text style={styles.podiumEntry}> {tournament.playerUsernames[tournament.podium.third] ?? tournament.podium.third}</Text>
           )}
         </View>
       )}
@@ -613,10 +616,22 @@ export default function TorneoScreen() {
       <View style={styles.prizesBox}>
         <Text style={styles.prizesTitle}>{t('tournament.prizeDistribution')}</Text>
         <View style={styles.prizesRow}>
-          <Text style={styles.prizeItem}>🥇 {tournament.prizes.first}💎</Text>
-          <Text style={styles.prizeItem}>🥈 {tournament.prizes.second}💎</Text>
-          <Text style={styles.prizeItem}>🥉 {tournament.prizes.third}💎</Text>
-          <Text style={styles.prizeItem}>👑 {tournament.creatorCut}💎</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ color: '#FFD700', fontSize: 12, marginRight: 2 }}>💎</Text>
+            <Text style={styles.prizeItem}>{tournament.prizes.first}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ color: '#FFD700', fontSize: 12, marginRight: 2 }}>💎</Text>
+            <Text style={styles.prizeItem}>{tournament.prizes.second}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ color: '#FFD700', fontSize: 12, marginRight: 2 }}>💎</Text>
+            <Text style={styles.prizeItem}>{tournament.prizes.third}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ color: '#FFD700', fontSize: 12, marginRight: 2 }}>💎</Text>
+            <Text style={styles.prizeItem}>{tournament.creatorCut}</Text>
+          </View>
         </View>
       </View>
 
@@ -631,7 +646,7 @@ export default function TorneoScreen() {
               <View style={[styles.playerDot, uid === tournament.createdBy && styles.creatorDot]} />
               <Text style={styles.playerName}>
                 {tournament.playerUsernames[uid] || uid}
-                {uid === tournament.createdBy && ' 👑'}
+                {uid === tournament.createdBy && ' '}
                 {uid === actorUid && ` ${t('tournament.you')}`}
               </Text>
             </View>
@@ -696,7 +711,7 @@ export default function TorneoScreen() {
               <ActivityIndicator color={COLORS.background} />
             ) : (
               <Text style={styles.joinBtnText}>
-                {t('tournament.joinBtn')}{tournament.entryFee > 0 ? ` (${tournament.entryFee}💎)` : ` ${t('tournament.joinFree')}`}
+                {t('tournament.joinBtn')}{tournament.entryFee > 0 ? ` (${tournament.entryFee})` : ` ${t('tournament.joinFree')}`}
               </Text>
             )}
           </TouchableOpacity>

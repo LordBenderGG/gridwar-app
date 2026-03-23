@@ -123,7 +123,7 @@ export default function VsIAScreen() {
     const newScore = { ...score };
     let msg = '';
     if (winner === 'X') { newScore.player += 1; msg = t('game.roundWin'); playSound('win'); }
-    else if (winner === 'O') { newScore.ia += 1; msg = `🤖 ${t('game.roundLoss')}`; playSound('lose'); }
+    else if (winner === 'O') { newScore.ia += 1; msg = ` ${t('game.roundLoss')}`; playSound('lose'); }
     else { msg = t('game.draw'); playSound('draw'); }
 
     setMessage(msg);
@@ -200,7 +200,7 @@ export default function VsIAScreen() {
       {gameOver ? (
         <View style={styles.gameOverContainer}>
           <Text style={[styles.gameOverText, playerWon ? styles.win : styles.loss]}>
-            {playerWon ? `🏆 ${t('result.victory')}` : score.player === score.ia ? `🤝 ${t('game.draw')}` : `🤖 ${t('result.defeat')} - ${t('ia.iaScore')}`}
+            {playerWon ? ` ${t('result.victory')}` : score.player === score.ia ? ` ${t('game.draw')}` : ` ${t('result.defeat')} - ${t('ia.iaScore')}`}
           </Text>
           {!playerWon && difficulty === 'hard' && (
             <Text style={styles.shame}>{t('training.shameHard')}</Text>
@@ -220,7 +220,7 @@ export default function VsIAScreen() {
             theme={user?.inventory?.active_theme ?? null}
           />
           <Text style={styles.turnText}>
-            {isPlayerTurn ? `🎯 ${t('game.yourTurn')} (X)` : `🤖 ${t('ia.iaScore')} ${t('game.opponentTurn').toLowerCase()}...`}
+            {isPlayerTurn ? ` ${t('game.yourTurn')} (X)` : ` ${t('ia.iaScore')} ${t('game.opponentTurn').toLowerCase()}...`}
           </Text>
         </View>
       )}

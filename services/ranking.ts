@@ -15,13 +15,13 @@ import { UserProfile } from './auth';
 import i18n from '../i18n';
 
 export const RANKS = [
-  { key: 'novato',   name: 'Novato',   min: 0,    max: 199,      icon: '🪨', color: '#9E9E9E' },
+  { key: 'novato',   name: 'Novato',   min: 0,    max: 199,      icon: '🔰', color: '#9E9E9E' },
   { key: 'bronce',   name: 'Bronce',   min: 200,  max: 499,      icon: '🥉', color: '#CD7F32' },
   { key: 'plata',    name: 'Plata',    min: 500,  max: 999,      icon: '🥈', color: '#C0C0C0' },
   { key: 'oro',      name: 'Oro',      min: 1000, max: 1999,     icon: '🥇', color: '#FFD700' },
   { key: 'diamante', name: 'Diamante', min: 2000, max: 3999,     icon: '💎', color: '#00BFFF' },
   { key: 'maestro',  name: 'Maestro',  min: 4000, max: 7999,     icon: '👑', color: '#9B59B6' },
-  { key: 'leyenda',  name: 'Leyenda',  min: 8000, max: Infinity, icon: '💀', color: '#FFD700' },
+  { key: 'leyenda',  name: 'Leyenda',  min: 8000, max: Infinity, icon: '🏆', color: '#FFD700' },
 ];
 
 /** Devuelve el nombre del rango traducido al idioma actual */

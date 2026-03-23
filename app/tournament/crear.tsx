@@ -239,10 +239,19 @@ export default function CrearTorneoScreen() {
                 <Text style={styles.sizeDesc}>{s.description}</Text>
               </View>
               <View style={styles.sizeRight}>
-                <Text style={styles.sizePrize}>🥇 {info.first}💎</Text>
-                <Text style={styles.sizePrize2}>🥈 {info.second}💎 · 🥉 {info.third}💎</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{ color: '#FFD700', fontSize: 12, marginRight: 2 }}>💎</Text>
+                  <Text style={styles.sizePrize}>{info.first}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{ color: '#FFD700', fontSize: 10, marginRight: 2 }}>💎</Text>
+                  <Text style={styles.sizePrize2}>{info.second} ·  {info.third}</Text>
+                </View>
                 {type === 'global' && (
-                  <Text style={styles.sizePool}>Pool: {info.pool}💎</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={{ color: '#FFD700', fontSize: 10, marginRight: 2 }}>💎</Text>
+                    <Text style={styles.sizePool}>Pool: {info.pool}</Text>
+                  </View>
                 )}
                 {maxPlayers === s.value && <View style={styles.selectedDot} />}
               </View>
@@ -254,17 +263,32 @@ export default function CrearTorneoScreen() {
       {/* Info box */}
       <View style={styles.infoBox}>
         <Text style={styles.infoTitle}>{t('tournament.prizesAndRules')}</Text>
-        <Text style={styles.infoText}>• 🥇 1ro: {prizeInfo.first}💎{type === 'global' ? ' (49% del pool)' : ''}</Text>
-        <Text style={styles.infoText}>• 🥈 2do: {prizeInfo.second}💎{type === 'global' ? ' (19.6%)' : ''}</Text>
-        <Text style={styles.infoText}>• 🥉 3ro: {prizeInfo.third}💎{type === 'global' ? ' (9.4%)' : ''}</Text>
-        <Text style={styles.infoText}>• 👑 Creador: {prizeInfo.creator}💎{type === 'global' ? ' (20%)' : ' fijo'}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={{ color: '#FFD700', fontSize: 12, marginRight: 4 }}>💎</Text>
+          <Text style={styles.infoText}>  1ro: {prizeInfo.first}{type === 'global' ? ' (49% del pool)' : ''}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={{ color: '#FFD700', fontSize: 12, marginRight: 4 }}>💎</Text>
+          <Text style={styles.infoText}>  2do: {prizeInfo.second}{type === 'global' ? ' (19.6%)' : ''}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={{ color: '#FFD700', fontSize: 12, marginRight: 4 }}>💎</Text>
+          <Text style={styles.infoText}>  3ro: {prizeInfo.third}{type === 'global' ? ' (9.4%)' : ''}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={{ color: '#FFD700', fontSize: 12, marginRight: 4 }}>💎</Text>
+          <Text style={styles.infoText}>  Creador: {prizeInfo.creator}{type === 'global' ? ' (20%)' : ' fijo'}</Text>
+        </View>
         {type === 'global' && (
-          <Text style={styles.infoText}>• 🏦 Economía global: {prizeInfo.pool > 0 ? Math.floor(prizeInfo.pool * 0.02) : 0}💎 (2%)</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ color: '#FFD700', fontSize: 12, marginRight: 4 }}>💎</Text>
+            <Text style={styles.infoText}>  Economía global: {prizeInfo.pool > 0 ? Math.floor(prizeInfo.pool * 0.02) : 0} (2%)</Text>
+          </View>
         )}
         <Text style={styles.infoSep} />
-        <Text style={styles.infoText}>• {t('tournament.ruleElimination')}</Text>
-        <Text style={styles.infoText}>• {t('tournament.ruleSemiFinal')}</Text>
-        <Text style={styles.infoText}>• {t('tournament.ruleCreatorStart')}</Text>
+        <Text style={styles.infoText}> {t('tournament.ruleElimination')}</Text>
+        <Text style={styles.infoText}> {t('tournament.ruleSemiFinal')}</Text>
+        <Text style={styles.infoText}> {t('tournament.ruleCreatorStart')}</Text>
       </View>
 
       {/* Banner antes del botón crear */}

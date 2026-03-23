@@ -4,6 +4,7 @@ import {
   StyleSheet, ScrollView, Alert, ActivityIndicator,
   KeyboardAvoidingView, Platform, Animated as RNAnimated, Dimensions,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { loginUser, ensureUserProfile } from '../../services/auth';
@@ -247,34 +248,34 @@ export default function LoginScreen() {
         <RNAnimated.View style={[styles.form, { transform: [{ translateX: shakeAnim }] }]}>
           <Text style={styles.formTitle}>{t('auth.loginSignIn')}</Text>
 
-          <View style={[styles.inputWrapper, focusedField === 'email' && styles.inputWrapperFocused]}>
-            <Text style={styles.inputIcon}>✉️</Text>
-            <TextInput
-              style={styles.input}
-              placeholder={t('auth.email')}
-              placeholderTextColor={COLORS.textMuted}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              onFocus={() => setFocusedField('email')}
-              onBlur={() => setFocusedField(null)}
-            />
-          </View>
+           <View style={[styles.inputWrapper, focusedField === 'email' && styles.inputWrapperFocused]}>
+             <Ionicons name="mail-outline" size={16} color={COLORS.textMuted} style={styles.inputIcon} />
+             <TextInput
+               style={styles.input}
+               placeholder={t('auth.email')}
+               placeholderTextColor={COLORS.textMuted}
+               value={email}
+               onChangeText={setEmail}
+               keyboardType="email-address"
+               autoCapitalize="none"
+               onFocus={() => setFocusedField('email')}
+               onBlur={() => setFocusedField(null)}
+             />
+           </View>
 
-          <View style={[styles.inputWrapper, focusedField === 'password' && styles.inputWrapperFocused]}>
-            <Text style={styles.inputIcon}>🔒</Text>
-            <TextInput
-              style={styles.input}
-              placeholder={t('auth.password')}
-              placeholderTextColor={COLORS.textMuted}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              onFocus={() => setFocusedField('password')}
-              onBlur={() => setFocusedField(null)}
-            />
-          </View>
+           <View style={[styles.inputWrapper, focusedField === 'password' && styles.inputWrapperFocused]}>
+             <Ionicons name="lock-closed-outline" size={16} color={COLORS.textMuted} style={styles.inputIcon} />
+             <TextInput
+               style={styles.input}
+               placeholder={t('auth.password')}
+               placeholderTextColor={COLORS.textMuted}
+               value={password}
+               onChangeText={setPassword}
+               secureTextEntry
+               onFocus={() => setFocusedField('password')}
+               onBlur={() => setFocusedField(null)}
+             />
+           </View>
 
           <TouchableOpacity
             style={[styles.btn, loading && styles.btnLoading]}
@@ -282,14 +283,14 @@ export default function LoginScreen() {
             disabled={loading}
             activeOpacity={0.85}
           >
-            {loading ? (
-              <ActivityIndicator color={COLORS.background} />
-            ) : (
-              <>
-                <Text style={styles.btnIcon}>🎮</Text>
-                <Text style={styles.btnText}>{t('auth.enterGame')}</Text>
-              </>
-            )}
+           {loading ? (
+             <ActivityIndicator color={COLORS.background} />
+           ) : (
+             <>
+               <Ionicons name="power-outline" size={18} color={COLORS.background} style={styles.btnIcon} />
+               <Text style={styles.btnText}>{t('auth.enterGame')}</Text>
+             </>
+           )}
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -302,18 +303,18 @@ export default function LoginScreen() {
 
         {/* Stats decorativas */}
         <View style={styles.statsRow}>
-          <View style={styles.statPill}>
-            <Text style={styles.statPillEmoji}>👑</Text>
-            <Text style={styles.statPillText}>{t('auth.ranks')}</Text>
-          </View>
-          <View style={styles.statPill}>
-            <Text style={styles.statPillEmoji}>⚡</Text>
-            <Text style={styles.statPillText}>{t('auth.realtime')}</Text>
-          </View>
-          <View style={styles.statPill}>
-            <Text style={styles.statPillEmoji}>💀</Text>
-            <Text style={styles.statPillText}>{t('auth.noPity')}</Text>
-          </View>
+           <View style={styles.statPill}>
+             <Ionicons name="trophy" size={18} color={COLORS.textSecondary} style={styles.statPillEmoji} />
+             <Text style={styles.statPillText}>{t('auth.ranks')}</Text>
+           </View>
+           <View style={styles.statPill}>
+             <Ionicons name="refresh" size={18} color={COLORS.textSecondary} style={styles.statPillEmoji} />
+             <Text style={styles.statPillText}>{t('auth.realtime')}</Text>
+           </View>
+           <View style={styles.statPill}>
+             <Ionicons name="game-controller" size={18} color={COLORS.textSecondary} style={styles.statPillEmoji} />
+             <Text style={styles.statPillText}>{t('auth.noPity')}</Text>
+           </View>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

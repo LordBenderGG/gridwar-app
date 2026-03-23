@@ -18,7 +18,7 @@ import { getPreviousSeason, SeasonLeaderboardEntry } from '../../services/season
 import '../../i18n';
 
 const PODIUM_COLORS = ['#FFD600', '#B0BEC5', '#FF6D00'];
-const SHAME_EMOJIS = ['💀', '🤡', '😭', '🗑️', '👎', '☠️'];
+const SHAME_EMOJIS = ['💀', '☠️', '😵', '😬', '🥶', '🪦'];
 
 // ─── RankRow (campeones) ──────────────────────────────────────────────────────
 
@@ -88,7 +88,7 @@ const PrevSeasonRow: React.FC<{ entry: SeasonLeaderboardEntry }> = ({ entry }) =
       </View>
       <View style={styles.rowRight}>
         <Text style={[styles.rowPoints, isTop3 && { color: accentColor }]}>{entry.points} pts</Text>
-        {reward && <Text style={styles.rewardBadge}>+{reward}💎</Text>}
+        {reward && <Text style={styles.rewardBadge}>+{reward}</Text>}
       </View>
     </View>
   );
@@ -315,7 +315,7 @@ export default function ClasificacionScreen() {
         onPress={() => setTopTab('champions')}
       >
         <Text style={[styles.topTabText, topTab === 'champions' && { color: COLORS.accent }]}>
-          🏆 {t('nav.champions')}
+           {t('nav.champions')}
         </Text>
       </TouchableOpacity>
       <TouchableOpacity
@@ -323,7 +323,7 @@ export default function ClasificacionScreen() {
         onPress={() => setTopTab('shame')}
       >
         <Text style={[styles.topTabText, topTab === 'shame' && { color: COLORS.danger }]}>
-          💀 {t('nav.shame')}
+           {t('nav.shame')}
         </Text>
       </TouchableOpacity>
     </View>
@@ -352,7 +352,7 @@ export default function ClasificacionScreen() {
             <View>
               <TopTabBar />
               <View style={styles.shameHeader}>
-                <Text style={styles.shameSkull}>💀</Text>
+                <Text style={styles.shameSkull}>☠️</Text>
                 <Text style={styles.shameTitle1}>{t('shame.title1')}</Text>
                 <Text style={styles.shameTitle2}>{t('shame.title2')}</Text>
                 <View style={styles.shameDivider} />
@@ -366,7 +366,7 @@ export default function ClasificacionScreen() {
           )}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Text style={{ fontSize: 56, marginBottom: 16 }}>🎉</Text>
+              <Text style={{ fontSize: 56, marginBottom: 16 }}>🪦</Text>
               <Text style={styles.empty}>{t('shame.empty')}</Text>
             </View>
           }

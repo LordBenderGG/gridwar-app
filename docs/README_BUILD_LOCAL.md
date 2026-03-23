@@ -53,5 +53,5 @@ gradlew.bat clean assembleRelease
 
 temporal
 https://github.com/LordBenderGG/gridwar-app
-*
+<YOUR_TOKEN_HERE>
 7 dias

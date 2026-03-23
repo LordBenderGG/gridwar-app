@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Alert, ActivityIndicator, Modal,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { doc, updateDoc, increment, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../../services/firebase';
@@ -29,10 +30,10 @@ interface ShopItem {
 }
 
 const PERSONALIZATION_ITEMS: ShopItem[] = [
-  { id: 'avatar_premium', nameKey: 'shop.avatarPremium', descKey: 'shop.avatarPremiumDesc', cost: 12, icon: '🎭' },
-  { id: 'profile_frame', nameKey: 'shop.profileFrame', descKey: 'shop.profileFrameDesc', cost: 8, icon: '🖼️' },
-  { id: 'board_theme', nameKey: 'shop.boardTheme', descKey: 'shop.boardThemeDesc', cost: 10, icon: '🎨' },
-  { id: 'name_color', nameKey: 'shop.nameColor', descKey: 'shop.nameColorDesc', cost: 5, icon: '✨' },
+  { id: 'avatar_premium', nameKey: 'shop.avatarPremium', descKey: 'shop.avatarPremiumDesc', cost: 12, icon: '✨', oneTime: true },
+  { id: 'profile_frame', nameKey: 'shop.profileFrame', descKey: 'shop.profileFrameDesc', cost: 8, icon: '🖼️', oneTime: true },
+  { id: 'board_theme', nameKey: 'shop.boardTheme', descKey: 'shop.boardThemeDesc', cost: 10, icon: '🎨', oneTime: true },
+  { id: 'name_color', nameKey: 'shop.nameColor', descKey: 'shop.nameColorDesc', cost: 5, icon: '🌈', oneTime: true },
 ];
 
 const WILDCARD_PACK_ITEM: ShopItem = {
@@ -49,10 +50,10 @@ const INDIVIDUAL_WILDCARDS: ShopItem[] = [
   { id: 'wc_time_reduce', nameKey: 'shop.wcTimeReduce',  descKey: 'shop.wcTimeReduceDesc',  cost: 20, icon: '⏱️' },
   { id: 'wc_teleport',    nameKey: 'shop.wcTeleport',    descKey: 'shop.wcTeleportDesc',    cost: 20, icon: '🌀' },
   { id: 'wc_shield',      nameKey: 'shop.wcShield',      descKey: 'shop.wcShieldDesc',      cost: 20, icon: '🛡️' },
-  { id: 'wc_confusion',   nameKey: 'shop.wcConfusion',   descKey: 'shop.wcConfusionDesc',   cost: 20, icon: '😵' },
+  { id: 'wc_confusion',   nameKey: 'shop.wcConfusion',   descKey: 'shop.wcConfusionDesc',   cost: 20, icon: '🔀' },
   { id: 'wc_sabotage',    nameKey: 'shop.wcSabotage',    descKey: 'shop.wcSabotageDesc',    cost: 20, icon: '💣' },
   { id: 'wc_freeze',      nameKey: 'shop.wcFreeze',      descKey: 'shop.wcFreezeDesc',      cost: 20, icon: '❄️' },
-  { id: 'wc_earthquake',  nameKey: 'shop.wcEarthquake',  descKey: 'shop.wcEarthquakeDesc',  cost: 20, icon: '💥' },
+  { id: 'wc_earthquake',  nameKey: 'shop.wcEarthquake',  descKey: 'shop.wcEarthquakeDesc',  cost: 20, icon: '🌪️' },
 ];
 
 const WC_ITEM_TO_KEY: Record<string, keyof WildcardInventory> = {
@@ -70,12 +71,12 @@ const POWERUP_ITEMS: ShopItem[] = [
   { id: 'unlock_block', nameKey: 'shop.unlockBlock', descKey: 'shop.unlockBlockDesc', cost: 40, icon: '🔓' },
   { id: 'point_shield', nameKey: 'shop.pointShield', descKey: 'shop.pointShieldDesc', cost: 35, icon: '🛡️' },
   { id: 'streak_shield', nameKey: 'shop.streakShield', descKey: 'shop.streakShieldDesc', cost: 30, icon: '🔥' },
-  { id: 'double_xp', nameKey: 'shop.doubleXP', descKey: 'shop.doubleXPDesc', cost: 35, icon: '⚡' },
+  { id: 'double_xp', nameKey: 'shop.doubleXP', descKey: 'shop.doubleXPDesc', cost: 35, icon: '⭐' },
 ];
 
 const EXTRAS_ITEMS: ShopItem[] = [
-  { id: 'name_change', nameKey: 'shop.nameChange', descKey: 'shop.nameChangeDesc', cost: 10, icon: '📝' },
-  { id: 'history_extended', nameKey: 'shop.historyExtended', descKey: 'shop.historyExtendedDesc', cost: 3, icon: '📜' },
+  { id: 'name_change', nameKey: 'shop.nameChange', descKey: 'shop.nameChangeDesc', cost: 10, icon: '✏️' },
+  { id: 'history_extended', nameKey: 'shop.historyExtended', descKey: 'shop.historyExtendedDesc', cost: 3, icon: '📚', oneTime: true },
 ];
 
 const TOURNAMENT_PASS_ITEM: ShopItem = {
@@ -83,7 +84,7 @@ const TOURNAMENT_PASS_ITEM: ShopItem = {
   nameKey: 'shop.tournamentPass',
   descKey: 'shop.tournamentPassDesc',
   cost: 80,
-  icon: '🏟️',
+  icon: '🏁',
 };
 
 // ─── Componente de item ────────────────────────────────────────────────────────
@@ -257,10 +258,13 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, gems, onBuy, buying, owned })
         {isLoading ? (
           <ActivityIndicator size="small" color={COLORS.background} />
         ) : owned ? (
-          <Text style={[styles.buyBtnLabel, styles.buyBtnLabelDisabled]}>✓</Text>
+          <Text style={[styles.buyBtnLabel, styles.buyBtnLabelDisabled]}>{t('shop.alreadyOwned')}</Text>
         ) : (
           <>
-            <Text style={styles.buyBtnCost}>💎 {item.cost}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ color: '#FFD700', fontSize: 12, marginRight: 2 }}>💎</Text>
+              <Text style={styles.buyBtnCost}>{item.cost}</Text>
+            </View>
             <Text style={[styles.buyBtnLabel, !canAfford && styles.buyBtnLabelDisabled]}>
               {t('shop.buyBtn')}
             </Text>
@@ -291,7 +295,7 @@ export default function TiendaScreen() {
     if (item.oneTime) {
       const inv = user.inventory as any || {};
       if (inv[item.id]) {
-        Alert.alert(t('shop.limitReached'), t('shop.wildcardPackFullOwned'));
+        Alert.alert(t('shop.limitReached'), t('shop.alreadyOwned'));
         return;
       }
     }
@@ -440,18 +444,28 @@ export default function TiendaScreen() {
   return (
     <>
       <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <Text style={styles.titleText}>{t('shop.title')}</Text>
-          <View style={styles.gemsBadge}>
-            <Text style={styles.gemsText}>{t('shop.gems', { count: gems })}</Text>
-          </View>
-        </View>
+       <View style={styles.header}>
+         <Text style={styles.titleText}>{t('shop.title')}</Text>
+         <View style={styles.gemsBadge}>
+           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+             <Text style={{ fontSize: 14, color: '#FFD700', marginRight: 4 }}>💎</Text>
+             <Text style={styles.gemsText}>{t('shop.gems', { count: gems })}</Text>
+           </View>
+         </View>
+       </View>
 
         <AdBanner placement="shop" style={{ marginBottom: 8 }} />
 
         <Text style={styles.catTitle}>{t('shop.catPersonalization')}</Text>
         {PERSONALIZATION_ITEMS.map((item) => (
-          <ItemCard key={item.id} item={item} gems={gems} onBuy={requestBuy} buying={buying} />
+          <ItemCard
+            key={item.id}
+            item={item}
+            gems={gems}
+            onBuy={requestBuy}
+            buying={buying}
+            owned={!!inv[item.id]}
+          />
         ))}
 
         <Text style={styles.catTitle}>{t('shop.catWildcards')}</Text>
@@ -481,12 +495,19 @@ export default function TiendaScreen() {
 
         <Text style={styles.catTitle}>{t('shop.catExtras')}</Text>
         {EXTRAS_ITEMS.map((item) => (
-          <ItemCard key={item.id} item={item} gems={gems} onBuy={requestBuy} buying={buying} />
+          <ItemCard
+            key={item.id}
+            item={item}
+            gems={gems}
+            onBuy={requestBuy}
+            buying={buying}
+            owned={item.oneTime ? !!inv[item.id] : false}
+          />
         ))}
 
         <Text style={styles.catTitle}>VIDEOS</Text>
         <RewardedAdButton
-          label="▶ Ver video y ganar 15 💎 GRATIS"
+          label="Ver video y ganar 15 gratis"
           gemAmount={15}
         />
       </ScrollView>

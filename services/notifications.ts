@@ -124,7 +124,7 @@ export const scheduleLocalChallengeNotification = async (
   try {
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: '⚔️ Reto recibido',
+        title: ' Reto recibido',
         body: `${fromUsername} te desafía a una batalla. ¡Tienes 30 segundos!`,
         sound: 'default',
         data: { type: 'challenge' },
@@ -149,7 +149,7 @@ export const scheduleDailyBonusReminder = async (): Promise<void> => {
 
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: '💎 ¡Tu bono diario te espera!',
+        title: ' ¡Tu bono diario te espera!',
         body: 'Abre GRIDWAR y reclama tus gemas diarias gratis.',
         sound: 'default',
         data: { type: 'daily_bonus' },

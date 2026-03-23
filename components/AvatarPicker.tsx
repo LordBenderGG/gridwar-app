@@ -17,14 +17,14 @@ export const AVATARS: Record<string, any> = {
 export const AVATAR_LIST = Object.keys(AVATARS);
 
 export const AVATAR_EMOJIS: Record<string, string> = {
-  avatar_1: '😎',
-  avatar_2: '🤖',
-  avatar_3: '🔥',
-  avatar_4: '🦾',
-  avatar_5: '🧠',
-  avatar_6: '⚡',
-  avatar_7: '👑',
-  avatar_8: '💥',
+  avatar_1: '😀',
+  avatar_2: '😎',
+  avatar_3: '🤖',
+  avatar_4: '👾',
+  avatar_5: '👽',
+  avatar_6: '👻',
+  avatar_7: '💀',
+  avatar_8: '🤡',
 };
 
 interface RankBadgeProps {
@@ -70,7 +70,7 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({ selected, onSelect, useEmoj
         >
           {useEmoji ? (
             <View style={[styles.emojiAvatar, { backgroundColor: COLORS.surface }]}> 
-              <Text style={styles.emojiText}>{AVATAR_EMOJIS[item] || '🙂'}</Text>
+              <Text style={styles.emojiText}>{AVATAR_EMOJIS[item] || ''}</Text>
             </View>
           ) : (
             <Image source={AVATARS[item]} style={styles.avatarImage} />

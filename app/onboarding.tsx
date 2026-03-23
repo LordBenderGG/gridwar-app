@@ -167,87 +167,87 @@ export default function OnboardingScreen() {
   const flatListRef = useRef<FlatList>(null);
   const progressAnim = useRef(new RNAnimated.Value(0)).current;
 
-  const SLIDES: Slide[] = [
-    {
-      key: 'welcome',
-      emoji: '⚔️',
-      title: t('onboarding.welcomeTitle'),
-      subtitle: t('onboarding.welcomeSubtitle'),
-      content: [
-        t('onboarding.welcomeContent1'),
-        t('onboarding.welcomeContent2'),
-        t('onboarding.welcomeContent3'),
-      ],
-      accentColor: COLORS.primary,
-    },
-    {
-      key: 'rules',
-      emoji: '🎯',
-      title: t('onboarding.rulesTitle'),
-      subtitle: t('onboarding.rulesSubtitle'),
-      content: [
-        t('onboarding.rulesContent1'),
-        t('onboarding.rulesContent2'),
-        t('onboarding.rulesContent3'),
-        t('onboarding.rulesContent4'),
-        t('onboarding.rulesContent5'),
-      ],
-      accentColor: COLORS.secondary,
-    },
-    {
-      key: 'ranks',
-      emoji: '👑',
-      title: t('onboarding.ranksTitle'),
-      subtitle: t('onboarding.ranksSubtitle'),
-      content: RANKS.map((r) => `${r.icon} ${getTranslatedRankName(r.name)} — ${t('onboarding.ranksFrom')} ${r.min} ${t('onboarding.ranksPts')}`),
-      accentColor: COLORS.warning,
-    },
-    {
-      key: 'wildcards',
-      emoji: '💎',
-      title: t('onboarding.wildcardsTitle'),
-      subtitle: t('onboarding.wildcardsSubtitle'),
-      content: [
-        t('onboarding.wildcardsContent1'),
-        t('onboarding.wildcardsContent2'),
-        t('onboarding.wildcardsContent3'),
-        t('onboarding.wildcardsContent4'),
-        t('onboarding.wildcardsContent5'),
-        t('onboarding.wildcardsContent6'),
-        t('onboarding.wildcardsContent7'),
-        t('onboarding.wildcardsContent8'),
-        t('onboarding.wildcardsContent9'),
-      ],
-      accentColor: COLORS.purple,
-    },
-    {
-      key: 'fame',
-      emoji: '🏆',
-      title: t('onboarding.fameTitle'),
-      subtitle: t('onboarding.fameSubtitle'),
-      content: [
-        t('onboarding.fameContent1'),
-        t('onboarding.fameContent2'),
-        t('onboarding.fameContent3'),
-        t('onboarding.fameContent4'),
-        t('onboarding.fameContent5'),
-      ],
-      accentColor: COLORS.danger,
-    },
-    {
-      key: 'start',
-      emoji: '🚀',
-      title: t('onboarding.startTitle'),
-      subtitle: t('onboarding.startSubtitle'),
-      content: [
-        t('onboarding.startContent1'),
-        t('onboarding.startContent2'),
-        t('onboarding.startContent3'),
-        t('onboarding.startContent4'),
-      ],
-      accentColor: COLORS.success,
-    },
-  ];
+    const SLIDES: Slide[] = [
+     {
+       key: 'welcome',
+       emoji: '🎮',
+       title: t('onboarding.welcomeTitle'),
+       subtitle: t('onboarding.welcomeSubtitle'),
+       content: [
+         t('onboarding.welcomeContent1'),
+         t('onboarding.welcomeContent2'),
+         t('onboarding.welcomeContent3'),
+       ],
+       accentColor: COLORS.primary,
+     },
+     {
+       key: 'rules',
+       emoji: '📜',
+       title: t('onboarding.rulesTitle'),
+       subtitle: t('onboarding.rulesSubtitle'),
+       content: [
+         t('onboarding.rulesContent1'),
+         t('onboarding.rulesContent2'),
+         t('onboarding.rulesContent3'),
+         t('onboarding.rulesContent4'),
+         t('onboarding.rulesContent5'),
+       ],
+       accentColor: COLORS.secondary,
+     },
+     {
+       key: 'ranks',
+       emoji: '🏆',
+       title: t('onboarding.ranksTitle'),
+       subtitle: t('onboarding.ranksSubtitle'),
+       content: RANKS.map((r) => `${r.icon} ${getTranslatedRankName(r.name)} — ${t('onboarding.ranksFrom')} ${r.min} ${t('onboarding.ranksPts')}`),
+       accentColor: COLORS.warning,
+     },
+     {
+       key: 'wildcards',
+       emoji: '⚡',
+       title: t('onboarding.wildcardsTitle'),
+       subtitle: t('onboarding.wildcardsSubtitle'),
+       content: [
+         t('onboarding.wildcardsContent1'),
+         t('onboarding.wildcardsContent2'),
+         t('onboarding.wildcardsContent3'),
+         t('onboarding.wildcardsContent4'),
+         t('onboarding.wildcardsContent5'),
+         t('onboarding.wildcardsContent6'),
+         t('onboarding.wildcardsContent7'),
+         t('onboarding.wildcardsContent8'),
+         t('onboarding.wildcardsContent9'),
+       ],
+       accentColor: COLORS.purple,
+     },
+     {
+       key: 'fame',
+       emoji: '🏆',
+       title: t('onboarding.fameTitle'),
+       subtitle: t('onboarding.fameSubtitle'),
+       content: [
+         t('onboarding.fameContent1'),
+         t('onboarding.fameContent2'),
+         t('onboarding.fameContent3'),
+         t('onboarding.fameContent4'),
+         t('onboarding.fameContent5'),
+       ],
+       accentColor: COLORS.danger,
+     },
+     {
+       key: 'start',
+       emoji: '🚀',
+       title: t('onboarding.startTitle'),
+       subtitle: t('onboarding.startSubtitle'),
+       content: [
+         t('onboarding.startContent1'),
+         t('onboarding.startContent2'),
+         t('onboarding.startContent3'),
+         t('onboarding.startContent4'),
+       ],
+       accentColor: COLORS.success,
+     },
+   ];
 
   const handleViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {

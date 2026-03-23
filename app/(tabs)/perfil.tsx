@@ -12,7 +12,7 @@ import { db } from '../../services/firebase';
 import { logoutUser, uploadProfilePhoto } from '../../services/auth';
 import { useAuthStore } from '../../store/authStore';
 import { getRankInfo, RANKS, getTranslatedRankName } from '../../services/ranking';
-import { AVATARS } from '../../components/AvatarPicker';
+import AvatarPicker, { AVATARS } from '../../components/AvatarPicker';
 import { WILDCARDS } from '../../services/wildcards';
 import { useColors } from '../../hooks/useColors';
 import { useThemeStore } from '../../store/themeStore';
@@ -397,6 +397,31 @@ const createStyles = (COLORS: any) => StyleSheet.create({
     color: COLORS.background,
     fontWeight: 'bold',
   },
+  avatarModalBox: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    padding: 20,
+    width: '100%',
+    maxHeight: '80%',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  avatarModalActions: {
+    marginTop: 14,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  avatarModalClose: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  avatarModalCloseText: {
+    color: COLORS.textSecondary,
+    fontWeight: 'bold',
+  },
   // Toggle de tema
   themeToggleRow: {
     flexDirection: 'row',
@@ -473,8 +498,10 @@ export default function PerfilScreen() {
   const { user, setUser, updateUser } = useAuthStore();
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [nameModalVisible, setNameModalVisible] = useState(false);
+  const [avatarModalVisible, setAvatarModalVisible] = useState(false);
   const [newName, setNewName] = useState('');
   const [savingName, setSavingName] = useState(false);
+  const [savingAvatar, setSavingAvatar] = useState(false);
   const [unlockedAchievements, setUnlockedAchievements] = useState<string[]>([]);
 
   useEffect(() => {
@@ -532,7 +559,7 @@ export default function PerfilScreen() {
     ]);
   };
 
-  const handleChangePhoto = async () => {
+  const handlePickFromGallery = async () => {
     if (!user) return;
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -557,6 +584,55 @@ export default function PerfilScreen() {
     } catch {
       Alert.alert('Error', t('auth.loginFailed'));
     }
+  };
+
+  const handleSelectPremiumAvatar = async (avatarId: string) => {
+    if (!user || savingAvatar) return;
+    if (!user.inventory?.avatar_premium) {
+      router.push('/(tabs)/tienda');
+      return;
+    }
+    setSavingAvatar(true);
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        avatar: avatarId,
+        photoURL: null,
+      });
+      updateUser({ avatar: avatarId, photoURL: null });
+      setAvatarModalVisible(false);
+    } catch {
+      Alert.alert('Error', t('profile.avatarUpdateError'));
+    } finally {
+      setSavingAvatar(false);
+    }
+  };
+
+  const handleOpenPremiumAvatars = () => {
+    if (!user) return;
+    if (!user.inventory?.avatar_premium) {
+      Alert.alert(
+        t('profile.premiumLockedTitle'),
+        t('profile.premiumLockedMsg'),
+        [
+          { text: t('profile.cancel'), style: 'cancel' },
+          { text: t('profile.goToStore'), onPress: () => router.push('/(tabs)/tienda') },
+        ]
+      );
+      return;
+    }
+    setAvatarModalVisible(true);
+  };
+
+  const handleChangePhoto = () => {
+    Alert.alert(
+      t('profile.photoOptionsTitle'),
+      t('profile.photoOptionsMsg'),
+      [
+        { text: t('profile.premiumAvatarsOption'), onPress: handleOpenPremiumAvatars },
+        { text: t('profile.galleryOption'), onPress: handlePickFromGallery },
+        { text: t('profile.cancel'), style: 'cancel' },
+      ]
+    );
   };
 
   const handleNamePress = () => {
@@ -701,7 +777,7 @@ export default function PerfilScreen() {
       <TouchableOpacity onPress={handleNamePress} style={styles.nameTouchable}>
         <Text style={[styles.username, { color: nameColor }]}>{user.username}</Text>
         {nameChanges > 0 && (
-          <Text style={styles.nameEditHint}>✏️ {t('profile.changeCount', { count: nameChanges })}</Text>
+          <Text style={styles.nameEditHint}>{t('profile.changeCount', { count: nameChanges })}</Text>
         )}
       </TouchableOpacity>
       <View style={styles.rankPill}>
@@ -747,8 +823,11 @@ export default function PerfilScreen() {
           <Text style={styles.statLabel}>{t('profile.points').toUpperCase()}</Text>
         </View>
         <View style={styles.statBox}>
-          <Text style={[styles.statValue, { color: COLORS.accent }]}>{user.gems}</Text>
-          <Text style={styles.statLabel}>💎 {t('profile.gems').toUpperCase()}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ color: '#FFD700', fontSize: 22, marginRight: 4 }}>💎</Text>
+            <Text style={[styles.statValue, { color: COLORS.accent }]}>{user.gems}</Text>
+          </View>
+          <Text style={styles.statLabel}>{t('profile.gems').toUpperCase()}</Text>
         </View>
         <View style={styles.statBox}>
           <Text style={[styles.statValue, { color: COLORS.success }]}>{user.wins}</Text>
@@ -787,7 +866,7 @@ export default function PerfilScreen() {
             )}
             {inv.double_xp && (
               <View style={styles.advantageBadge}>
-                <Text style={styles.advantageIcon}>⚡</Text>
+                <Text style={styles.advantageIcon}>⭐</Text>
                 <Text style={styles.advantageLabel}>{t('profile.doubleXP', { remaining: inv.double_xp_remaining ?? 3 })}</Text>
               </View>
             )}
@@ -945,7 +1024,7 @@ export default function PerfilScreen() {
 
         {history.length === 0 ? (
           <View style={styles.emptyHistory}>
-            <Text style={styles.emptyHistoryEmoji}>🎮</Text>
+            <Text style={styles.emptyHistoryEmoji}>-</Text>
             <Text style={styles.emptyHistoryText}>{t('ranking.empty')}</Text>
           </View>
         ) : (
@@ -956,7 +1035,7 @@ export default function PerfilScreen() {
             >
               <View style={[styles.resultBadge, item.result === 'win' ? styles.winBadge : styles.lossBadge]}>
                 <Text style={styles.resultBadgeText}>
-                  {item.result === 'win' ? `✓ ${t('profile.win')}` : `✗ ${t('profile.loss')}`}
+                  {item.result === 'win' ? t('profile.win') : t('profile.loss')}
                 </Text>
               </View>
               <View style={styles.historyInfo}>
@@ -964,7 +1043,7 @@ export default function PerfilScreen() {
                 <Text style={styles.historyScore}>{item.score}</Text>
               </View>
               <Text style={styles.historyTypeIcon}>
-                {item.type === 'global' ? '🌍' : item.type === 'tournament' ? '🏆' : '📡'}
+                {item.type === 'global' ? '🌍' : item.type === 'tournament' ? '🏆' : '📍'}
               </Text>
             </View>
           ))
@@ -979,7 +1058,7 @@ export default function PerfilScreen() {
           onPress={toggleTheme}
           activeOpacity={0.8}
         >
-          <Text style={styles.themeToggleIcon}>{isDark ? '🌙' : '☀️'}</Text>
+          <Text style={styles.themeToggleIcon}>{isDark ? '' : ''}</Text>
           <View style={styles.themeToggleInfo}>
             <Text style={styles.themeToggleLabel}>
               {isDark ? 'Modo Oscuro' : 'Modo Claro'}
@@ -999,6 +1078,35 @@ export default function PerfilScreen() {
       </TouchableOpacity>
 
       {/* Modal de cambio de nombre */}
+      <Modal
+        visible={avatarModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAvatarModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.avatarModalBox}>
+            <Text style={styles.modalTitle}>{t('profile.selectPremiumAvatar')}</Text>
+            <Text style={styles.modalSubtitle}>{t('shop.avatarPremiumDesc')}</Text>
+            <AvatarPicker
+              selected={user.avatar || 'avatar_1'}
+              onSelect={handleSelectPremiumAvatar}
+            />
+            <View style={styles.avatarModalActions}>
+              <TouchableOpacity
+                style={styles.avatarModalClose}
+                onPress={() => setAvatarModalVisible(false)}
+                disabled={savingAvatar}
+              >
+                <Text style={styles.avatarModalCloseText}>
+                  {savingAvatar ? t('profile.saving') : t('profile.cancel')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Modal
         visible={nameModalVisible}
         transparent
